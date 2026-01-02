@@ -39,11 +39,24 @@ agentctl --version
 
 ### Setup
 
+**Option 1: Service Account (Recommended for automation)**
 ```bash
-# Authenticate with GCP
-gcloud auth login
+# Download a service account JSON from GCP Console
+# Set the environment variable
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 
-# Initialize AgentCtl (creates GCP resources, prompts for API keys)
+# Initialize AgentCtl
+agentctl init
+```
+
+**Option 2: Service Account via flag**
+```bash
+agentctl init --service-account /path/to/service-account.json
+```
+
+**Option 3: gcloud CLI (if installed)**
+```bash
+gcloud auth application-default login
 agentctl init
 ```
 
