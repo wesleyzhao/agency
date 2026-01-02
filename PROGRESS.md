@@ -57,10 +57,10 @@ Update this file after completing each task:
 | 3.4 | VM Manager service | ✅ | 2026-01-01 | GCE instance lifecycle |
 | 3.5 | Init command | ✅ | 2026-01-01 | GCP project setup wizard |
 | 3.6 | Wire up VM creation | ✅ | 2026-01-01 | VM lifecycle in agent routes |
-| 3.7 | SSH command | ⬜ | | |
-| 3.8 | Logs command | ⬜ | | |
+| 3.7 | SSH command | ✅ | 2026-01-01 | gcloud compute ssh wrapper |
+| 3.8 | Logs command | ✅ | 2026-01-01 | Serial console + SSH tail |
 
-**Phase 3 Checkpoint:** ⬜
+**Phase 3 Checkpoint:** ✅ All 45 tests pass, all GCP services implemented
 
 ---
 
