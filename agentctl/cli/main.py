@@ -16,12 +16,10 @@ def cli(ctx):
     ctx.ensure_object(dict)
 
 
-# Import and register command groups
-# These will be added in subsequent tasks
 def register_commands():
     """Register all CLI commands."""
-    # Will be populated as we add commands
-    pass
+    from agentctl.cli.run import run
+    cli.add_command(run)
 
 
 register_commands()
