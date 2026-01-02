@@ -83,6 +83,7 @@ async def create_agent(request: CreateAgentRequest):
         # Create actual VM
         from agentctl.server.services.vm_manager import VMManager
         from agentctl.server.services.startup_script import generate_startup_script
+        from agentctl.server.services.secret_manager import SecretManagerService
 
         startup_script = generate_startup_script(
             agent_id=agent.id,
@@ -97,6 +98,24 @@ async def create_agent(request: CreateAgentRequest):
             screenshot_interval=config.screenshot_interval,
         )
 
+        # Fetch secrets to inject into VM metadata
+        secrets = SecretManagerService(app_config.gcp_project)
+        metadata_items = {}
+
+        try:
+            api_key = secrets.get_secret("anthropic-api-key")
+            if api_key:
+                metadata_items["anthropic-api-key"] = api_key
+        except Exception:
+            raise HTTPException(500, "Anthropic API key not found in Secret Manager. Run 'agentctl init' to set up secrets.")
+
+        try:
+            github_token = secrets.get_secret("github-token")
+            if github_token:
+                metadata_items["github-token"] = github_token
+        except Exception:
+            pass  # GitHub token is optional
+
         vm = VMManager(app_config.gcp_project, app_config.gcp_zone)
         instance_name = f"agent-{agent.id}"
 
@@ -107,6 +126,7 @@ async def create_agent(request: CreateAgentRequest):
                 startup_script=startup_script,
                 spot=config.spot,
                 labels={"agent-id": agent.id},
+                metadata_items=metadata_items,
             )
 
             repository.update_agent_status(

@@ -13,16 +13,34 @@ SCREENSHOT_INTERVAL={screenshot_interval}
 
 log() {{ echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }}
 
+export HOME=/root
+
 log "=== AgentCtl Agent Starting ==="
 log "Agent ID: $AGENT_ID"
+
+# === Create agent user (Claude Code cannot run as root) ===
+log "Creating agent user..."
+useradd -m -s /bin/bash agent
+AGENT_HOME=/home/agent
 
 # === Install Dependencies ===
 log "Installing dependencies..."
 apt-get update -qq
-apt-get install -y -qq git curl python3 python3-pip nodejs npm jq scrot xvfb
+apt-get install -y -qq git curl python3 python3-pip jq scrot xvfb ca-certificates gnupg sudo
+
+# Install Node.js 18 (required for Claude Code)
+log "Installing Node.js 18..."
+mkdir -p /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_18.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
+apt-get update -qq
+apt-get install -y -qq nodejs
+
+log "Node.js version: $(node --version)"
 
 # Install Claude Code
-npm install -g @anthropic-ai/claude-code 2>/dev/null || true
+log "Installing Claude Code..."
+npm install -g @anthropic-ai/claude-code
 
 # === Fetch Secrets from Instance Metadata ===
 # NOTE: Secrets are injected by master server via metadata, NOT fetched from Secret Manager.
@@ -31,7 +49,7 @@ log "Loading secrets from metadata..."
 METADATA_URL="http://metadata.google.internal/computeMetadata/v1/instance/attributes"
 METADATA_HEADER="Metadata-Flavor: Google"
 
-export ANTHROPIC_API_KEY=$(curl -s "$METADATA_URL/anthropic-api-key" -H "$METADATA_HEADER" || echo "")
+ANTHROPIC_API_KEY=$(curl -s "$METADATA_URL/anthropic-api-key" -H "$METADATA_HEADER" || echo "")
 GITHUB_TOKEN=$(curl -s "$METADATA_URL/github-token" -H "$METADATA_HEADER" 2>/dev/null || echo "")
 
 if [ -z "$ANTHROPIC_API_KEY" ]; then
@@ -39,27 +57,31 @@ if [ -z "$ANTHROPIC_API_KEY" ]; then
     exit 1
 fi
 
-if [ -n "$GITHUB_TOKEN" ]; then
-    export GITHUB_TOKEN
-    git config --global credential.helper store
-    echo "https://$GITHUB_TOKEN:x-oauth-basic@github.com" > ~/.git-credentials
-fi
-
 # === Setup Workspace ===
 mkdir -p /workspace
-cd /workspace
+chown agent:agent /workspace
 
 REPO="{repo}"
 BRANCH="{branch}"
+
+# Setup git credentials for agent user
+if [ -n "$GITHUB_TOKEN" ]; then
+    sudo -u agent git config --global credential.helper store
+    echo "https://$GITHUB_TOKEN:x-oauth-basic@github.com" > $AGENT_HOME/.git-credentials
+    chown agent:agent $AGENT_HOME/.git-credentials
+fi
+
+sudo -u agent git config --global user.email "agent@agentctl.local"
+sudo -u agent git config --global user.name "AgentCtl Agent"
+
 if [ -n "$REPO" ]; then
     log "Cloning $REPO..."
-    git clone "$REPO" repo 2>/dev/null || git clone "https://$GITHUB_TOKEN@${{REPO#https://}}" repo
+    cd /workspace
+    sudo -u agent git clone "$REPO" repo 2>/dev/null || sudo -u agent git clone "https://$GITHUB_TOKEN@${{REPO#https://}}" repo
     cd repo
-    git config user.email "agent@agentctl.local"
-    git config user.name "AgentCtl Agent"
     if [ -n "$BRANCH" ]; then
-        git checkout -B "$BRANCH"
-        git push -u origin "$BRANCH" 2>/dev/null || true
+        sudo -u agent git checkout -B "$BRANCH"
+        sudo -u agent git push -u origin "$BRANCH" 2>/dev/null || true
     fi
 fi
 
@@ -67,20 +89,17 @@ fi
 cat > /workspace/.prompt << 'PROMPT_END'
 {prompt}
 PROMPT_END
+chown agent:agent /workspace/.prompt
 
-# === Auto-commit Function ===
+# === Auto-commit Function (runs as agent user) ===
 auto_commit() {{
-    cd /workspace/repo 2>/dev/null || return
-    if [ -n "$(git status --porcelain)" ]; then
-        git add -A
-        git commit -m "Auto-commit: $(date '+%Y-%m-%d %H:%M:%S')" || true
-        git push || true
-    fi
+    sudo -u agent bash -c 'cd /workspace/repo 2>/dev/null || exit 0; if [ -n "$(git status --porcelain)" ]; then git add -A && git commit -m "Auto-commit: $(date +%Y-%m-%d\ %H:%M:%S)" && git push; fi' || true
 }}
 
 # === Screenshot Function ===
 take_screenshot() {{
     mkdir -p /workspace/screenshots
+    chown agent:agent /workspace/screenshots
     DISPLAY=:99 scrot "/workspace/screenshots/$(date +%s).png" 2>/dev/null || true
 }}
 
@@ -104,14 +123,25 @@ curl -s -X POST "$MASTER_URL/v1/internal/heartbeat" \
     -H "Content-Type: application/json" \
     -d '{{"agent_id": "'"$AGENT_ID"'", "status": "running"}}' || true
 
-# === Run Agent ===
+# === Run Agent as non-root user ===
 log "Starting $ENGINE with timeout ${{TIMEOUT}}s..."
-cd /workspace/repo 2>/dev/null || cd /workspace
+WORKDIR=/workspace/repo
+[ -d "$WORKDIR" ] || WORKDIR=/workspace
 
 PROMPT=$(cat /workspace/.prompt)
 
 if [ "$ENGINE" = "claude" ]; then
-    timeout $TIMEOUT claude --dangerously-skip-permissions --print "$PROMPT" 2>&1 | tee /workspace/agent.log || true
+    # Run Claude Code as agent user (cannot run as root)
+    # Create a runner script to avoid quoting issues
+    cat > /workspace/run_claude.sh << 'RUNNER_EOF'
+#!/bin/bash
+cd "$1"
+exec timeout "$2" claude --dangerously-skip-permissions --print "$(cat /workspace/.prompt)"
+RUNNER_EOF
+    chmod +x /workspace/run_claude.sh
+    chown agent:agent /workspace/run_claude.sh
+
+    sudo -u agent env ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" DISPLAY=:99 HOME=/home/agent /workspace/run_claude.sh "$WORKDIR" "$TIMEOUT" 2>&1 | tee /workspace/agent.log || true
 fi
 
 # === Cleanup ===

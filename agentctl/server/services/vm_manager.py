@@ -21,8 +21,13 @@ class VMManager:
         spot: bool = False,
         service_account: Optional[str] = None,
         labels: Optional[dict] = None,
+        metadata_items: Optional[dict] = None,
     ) -> dict:
-        """Create a new VM instance."""
+        """Create a new VM instance.
+
+        Args:
+            metadata_items: Additional metadata key-value pairs (e.g., API keys)
+        """
         instance = compute_v1.Instance()
         instance.name = name
         instance.machine_type = f"zones/{self.zone}/machineTypes/{machine_type}"
@@ -46,9 +51,13 @@ class VMManager:
         network.access_configs = [access]
         instance.network_interfaces = [network]
 
-        # Startup script
+        # Metadata: startup script + any additional items (e.g., API keys)
         metadata = compute_v1.Metadata()
-        metadata.items = [compute_v1.Items(key="startup-script", value=startup_script)]
+        items = [compute_v1.Items(key="startup-script", value=startup_script)]
+        if metadata_items:
+            for key, value in metadata_items.items():
+                items.append(compute_v1.Items(key=key, value=value))
+        metadata.items = items
         instance.metadata = metadata
 
         # Service account
