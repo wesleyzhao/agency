@@ -8,9 +8,10 @@ from google.api_core import exceptions
 class StorageManager:
     """Manage GCS bucket for agent artifacts."""
 
-    def __init__(self, bucket_name: str):
-        self.client = storage.Client()
+    def __init__(self, bucket_name: str, project: Optional[str] = None):
+        self.client = storage.Client(project=project)
         self.bucket_name = bucket_name
+        self.project = project
         self._bucket = None
 
     @property

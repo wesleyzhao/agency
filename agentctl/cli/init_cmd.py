@@ -16,7 +16,10 @@ console = Console()
 @click.option("--region", default="us-central1", help="GCP region")
 @click.option("--zone", default="us-central1-a", help="GCP zone")
 @click.option("--service-account", "-s", help="Path to service account JSON file")
-def init(project, region, zone, service_account):
+@click.option("--anthropic-key", envvar="ANTHROPIC_API_KEY", help="Anthropic API key")
+@click.option("--github-token", envvar="GITHUB_TOKEN", help="GitHub token (optional)")
+@click.option("--bucket", help="Use existing GCS bucket instead of creating new one")
+def init(project, region, zone, service_account, anthropic_key, github_token, bucket):
     """Initialize AgentCtl in a GCP project.
 
     Authentication can be done via:
@@ -61,32 +64,37 @@ def init(project, region, zone, service_account):
     console.print("[green]✓[/green] APIs enabled")
 
     # Step 4: Create GCS bucket
-    bucket_name = f"agentctl-{project}-{secrets.token_hex(4)}"
-    try:
-        from agentctl.server.services.storage_manager import StorageManager
-        storage = StorageManager(bucket_name)
-        storage.create_bucket(location=region)
-        console.print(f"[green]✓[/green] Created bucket: {bucket_name}")
-    except Exception as e:
-        console.print(f"[yellow]Warning:[/yellow] Could not create bucket: {e}")
-        bucket_name = click.prompt("Enter existing bucket name")
+    if bucket:
+        bucket_name = bucket
+        console.print(f"[green]✓[/green] Using existing bucket: {bucket_name}")
+    else:
+        bucket_name = f"agentctl-{project}-{secrets.token_hex(4)}"
+        try:
+            from agentctl.server.services.storage_manager import StorageManager
+            storage = StorageManager(bucket_name, project=project)
+            storage.create_bucket(location=region)
+            console.print(f"[green]✓[/green] Created bucket: {bucket_name}")
+        except Exception as e:
+            console.print(f"[yellow]Warning:[/yellow] Could not create bucket: {e}")
+            bucket_name = click.prompt("Enter existing bucket name")
 
-    # Step 5: Store API keys
-    console.print("\n[bold]API Keys[/bold]")
-    console.print("[dim]These will be stored in GCP Secret Manager[/dim]\n")
-
+    # Step 5: Store API keys (optional - can be added later)
     from agentctl.server.services.secret_manager import SecretManagerService
     secrets_svc = SecretManagerService(project)
 
-    anthropic_key = getpass("Anthropic API Key: ")
-    if anthropic_key:
-        secrets_svc.set_secret("anthropic-api-key", anthropic_key)
-        console.print("[green]✓[/green] Anthropic key saved")
+    if anthropic_key or github_token:
+        console.print("\n[bold]API Keys[/bold]")
+        console.print("[dim]Storing in GCP Secret Manager[/dim]\n")
 
-    github_token = getpass("GitHub Token (optional, press Enter to skip): ")
-    if github_token:
-        secrets_svc.set_secret("github-token", github_token)
-        console.print("[green]✓[/green] GitHub token saved")
+        if anthropic_key:
+            secrets_svc.set_secret("anthropic-api-key", anthropic_key)
+            console.print("[green]✓[/green] Anthropic key saved")
+
+        if github_token:
+            secrets_svc.set_secret("github-token", github_token)
+            console.print("[green]✓[/green] GitHub token saved")
+    else:
+        console.print("\n[dim]Tip: Set ANTHROPIC_API_KEY before running agents[/dim]")
 
     # Step 6: Save config
     config = Config(
