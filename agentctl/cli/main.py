@@ -22,6 +22,8 @@ def register_commands():
     from agentctl.cli.agents import list_agents, status, stop, delete
     from agentctl.cli.tell import tell
     from agentctl.cli.init_cmd import init
+    from agentctl.cli.ssh import ssh
+    from agentctl.cli.logs import logs
 
     cli.add_command(init)
     cli.add_command(run)
@@ -30,6 +32,8 @@ def register_commands():
     cli.add_command(stop)
     cli.add_command(delete)
     cli.add_command(tell)
+    cli.add_command(ssh)
+    cli.add_command(logs)
 
 
 register_commands()
