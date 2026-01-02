@@ -22,6 +22,7 @@ Update this file after completing each task:
 
 | Task | Description | Status | Date | Notes |
 |------|-------------|--------|------|-------|
+| 1.0 | Provider interface | ✅ | 2026-01-01 | CloudProvider base, LocalProvider, GCPProvider placeholder |
 | 1.1 | Define core data models | ⬜ | | |
 | 1.2 | Configuration module | ⬜ | | |
 | 1.3 | CLI framework setup | ⬜ | | |
