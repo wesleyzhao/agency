@@ -41,9 +41,9 @@ Update this file after completing each task:
 |------|-------------|--------|------|-------|
 | 2.1 | Server skeleton | ✅ | 2026-01-01 | FastAPI app with health endpoint |
 | 2.2 | Agent repository | ✅ | 2026-01-01 | SQLite CRUD operations |
-| 2.3 | Agent routes | ⬜ | | |
+| 2.3 | Agent routes | ✅ | 2026-01-01 | REST API endpoints for agents |
 
-**Phase 2 Checkpoint:** ⬜
+**Phase 2 Checkpoint:** ✅ All 36 unit tests + 5 integration tests pass
 
 ---
 
