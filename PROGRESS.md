@@ -56,7 +56,7 @@ Update this file after completing each task:
 | 3.3 | Storage Manager service | ✅ | 2026-01-01 | GCS bucket operations |
 | 3.4 | VM Manager service | ✅ | 2026-01-01 | GCE instance lifecycle |
 | 3.5 | Init command | ✅ | 2026-01-01 | GCP project setup wizard |
-| 3.6 | Wire up VM creation | ⬜ | | |
+| 3.6 | Wire up VM creation | ✅ | 2026-01-01 | VM lifecycle in agent routes |
 | 3.7 | SSH command | ⬜ | | |
 | 3.8 | Logs command | ⬜ | | |
 
