@@ -29,9 +29,9 @@ Update this file after completing each task:
 | 1.4 | API client module | ✅ | 2026-01-01 | APIClient class with httpx |
 | 1.5 | Run command | ✅ | 2026-01-01 | CLI run command with all options |
 | 1.6 | List command | ✅ | 2026-01-01 | list, status, stop, delete commands |
-| 1.7 | Tell command | ⬜ | | |
+| 1.7 | Tell command | ✅ | 2026-01-01 | Send instructions to running agent |
 
-**Phase 1 Checkpoint:** ⬜
+**Phase 1 Checkpoint:** ✅ All 27 unit tests pass
 
 ---
 
