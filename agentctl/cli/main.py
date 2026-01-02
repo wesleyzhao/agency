@@ -21,7 +21,9 @@ def register_commands():
     from agentctl.cli.run import run
     from agentctl.cli.agents import list_agents, status, stop, delete
     from agentctl.cli.tell import tell
+    from agentctl.cli.init_cmd import init
 
+    cli.add_command(init)
     cli.add_command(run)
     cli.add_command(list_agents)
     cli.add_command(status)
