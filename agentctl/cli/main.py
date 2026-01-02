@@ -24,6 +24,7 @@ def register_commands():
     from agentctl.cli.init_cmd import init
     from agentctl.cli.ssh import ssh
     from agentctl.cli.logs import logs
+    from agentctl.cli.screenshots import screenshots
 
     cli.add_command(init)
     cli.add_command(run)
@@ -34,6 +35,7 @@ def register_commands():
     cli.add_command(tell)
     cli.add_command(ssh)
     cli.add_command(logs)
+    cli.add_command(screenshots)
 
 
 register_commands()
