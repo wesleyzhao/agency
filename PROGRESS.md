@@ -52,9 +52,9 @@ Update this file after completing each task:
 | Task | Description | Status | Date | Notes |
 |------|-------------|--------|------|-------|
 | 3.1 | GCP client utilities | ✅ | 2026-01-01 | gcloud wrappers for auth, project, APIs |
-| 3.2 | Secret Manager service | ⬜ | | |
-| 3.3 | Storage Manager service | ⬜ | | |
-| 3.4 | VM Manager service | ⬜ | | |
+| 3.2 | Secret Manager service | ✅ | 2026-01-01 | Secrets CRUD operations |
+| 3.3 | Storage Manager service | ✅ | 2026-01-01 | GCS bucket operations |
+| 3.4 | VM Manager service | ✅ | 2026-01-01 | GCE instance lifecycle |
 | 3.5 | Init command | ⬜ | | |
 | 3.6 | Wire up VM creation | ⬜ | | |
 | 3.7 | SSH command | ⬜ | | |
