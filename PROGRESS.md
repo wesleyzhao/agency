@@ -28,7 +28,7 @@ Update this file after completing each task:
 | 1.3 | CLI framework setup | ✅ | 2026-01-01 | Click-based CLI with help and version |
 | 1.4 | API client module | ✅ | 2026-01-01 | APIClient class with httpx |
 | 1.5 | Run command | ✅ | 2026-01-01 | CLI run command with all options |
-| 1.6 | List command | ⬜ | | |
+| 1.6 | List command | ✅ | 2026-01-01 | list, status, stop, delete commands |
 | 1.7 | Tell command | ⬜ | | |
 
 **Phase 1 Checkpoint:** ⬜
