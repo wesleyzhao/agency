@@ -90,9 +90,11 @@ async def create_agent(request: CreateAgentRequest):
             engine=config.engine.value,
             master_url=app_config.master_server_url or "http://localhost:8000",
             project=app_config.gcp_project,
+            bucket=app_config.gcs_bucket or f"{app_config.gcp_project}-agentctl",
             repo=config.repo or "",
             branch=config.branch or "",
             timeout=config.timeout_seconds,
+            screenshot_interval=config.screenshot_interval,
         )
 
         vm = VMManager(app_config.gcp_project, app_config.gcp_zone)
