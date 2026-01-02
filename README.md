@@ -39,26 +39,36 @@ agentctl --version
 
 ### Setup
 
-**Option 1: Service Account (Recommended for automation)**
+**Step 1: Install Google Cloud SDK** (if not already installed)
 ```bash
-# Download a service account JSON from GCP Console
-# Set the environment variable
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+# macOS
+brew install --cask google-cloud-sdk
 
-# Initialize AgentCtl
-agentctl init
+# Or download from: https://cloud.google.com/sdk/docs/install
 ```
 
-**Option 2: Service Account via flag**
+**Step 2: Authenticate**
 ```bash
-agentctl init --service-account /path/to/service-account.json
-```
-
-**Option 3: gcloud CLI (if installed)**
-```bash
+gcloud auth login
 gcloud auth application-default login
+```
+
+**Step 3: Initialize AgentCtl**
+```bash
 agentctl init
 ```
+
+That's it! No JSON files or environment variables needed.
+
+<details>
+<summary>Alternative: Service Account (for CI/CD)</summary>
+
+```bash
+# Set path to service account JSON
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+agentctl init
+```
+</details>
 
 ### Start the Master Server
 
