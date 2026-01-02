@@ -17,6 +17,7 @@ class Config:
     gcp_project: Optional[str] = None
     gcp_region: str = "us-central1"
     gcp_zone: str = "us-central1-a"
+    service_account_file: Optional[str] = None  # Path to service account JSON
 
     # Server settings
     master_server_url: Optional[str] = None
@@ -51,6 +52,7 @@ class Config:
             "AGENTCTL_GCP_REGION": "gcp_region",
             "AGENTCTL_GCP_ZONE": "gcp_zone",
             "AGENTCTL_MASTER_URL": "master_server_url",
+            "GOOGLE_APPLICATION_CREDENTIALS": "service_account_file",
         }
         for env_var, attr in env_mappings.items():
             if env_var in os.environ:
@@ -67,6 +69,7 @@ class Config:
             "gcp_project": self.gcp_project,
             "gcp_region": self.gcp_region,
             "gcp_zone": self.gcp_zone,
+            "service_account_file": self.service_account_file,
             "master_server_url": self.master_server_url,
             "gcs_bucket": self.gcs_bucket,
             "default_machine_type": self.default_machine_type,

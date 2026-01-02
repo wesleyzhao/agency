@@ -15,20 +15,30 @@ console = Console()
 @click.option("--project", "-p", help="GCP project ID")
 @click.option("--region", default="us-central1", help="GCP region")
 @click.option("--zone", default="us-central1-a", help="GCP zone")
-def init(project, region, zone):
-    """Initialize AgentCtl in a GCP project."""
+@click.option("--service-account", "-s", help="Path to service account JSON file")
+def init(project, region, zone, service_account):
+    """Initialize AgentCtl in a GCP project.
 
-    # Step 1: Verify gcloud auth
+    Authentication can be done via:
+    - Service account JSON file (--service-account or GOOGLE_APPLICATION_CREDENTIALS)
+    - Application Default Credentials (gcloud auth application-default login)
+    """
+
     console.print("\n[bold]Initializing AgentCtl[/bold]\n")
 
-    if not verify_auth():
-        console.print("[red]Error:[/red] Not authenticated. Run 'gcloud auth login' first.")
+    # Step 1: Verify GCP auth
+    if not verify_auth(service_account):
+        console.print("[red]Error:[/red] GCP authentication failed.")
+        console.print("\nTo authenticate, do one of:")
+        console.print("  1. Use a service account: agentctl init --service-account /path/to/key.json")
+        console.print("  2. Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json")
+        console.print("  3. Run: gcloud auth application-default login")
         raise SystemExit(1)
     console.print("[green]✓[/green] GCP authentication verified")
 
     # Step 2: Get project
     if not project:
-        project = get_project_id()
+        project = get_project_id(service_account)
         if not project:
             project = click.prompt("GCP Project ID")
     console.print(f"[green]✓[/green] Using project: {project}")
@@ -38,14 +48,15 @@ def init(project, region, zone):
         "compute.googleapis.com",
         "secretmanager.googleapis.com",
         "storage.googleapis.com",
+        "serviceusage.googleapis.com",  # Needed for enabling other APIs
     ]
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}")) as progress:
         task = progress.add_task("Enabling APIs...", total=len(apis))
         for api in apis:
             try:
-                enable_api(project, api)
+                enable_api(project, api, service_account)
             except GCPError as e:
-                console.print(f"[yellow]Warning:[/yellow] {e}")
+                console.print(f"\n[yellow]Warning:[/yellow] {e}")
             progress.advance(task)
     console.print("[green]✓[/green] APIs enabled")
 
@@ -83,6 +94,7 @@ def init(project, region, zone):
         gcp_region=region,
         gcp_zone=zone,
         gcs_bucket=bucket_name,
+        service_account_file=service_account,
         master_server_url="http://localhost:8000",  # Default to local for now
     )
     config.save()
