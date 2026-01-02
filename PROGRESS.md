@@ -14,7 +14,7 @@ Update this file after completing each task:
 | Task | Description | Status | Date | Notes |
 |------|-------------|--------|------|-------|
 | 0.1 | Repository creation | ✅ | 2026-01-01 | Created agentctl package structure, tests dirs, .gitignore |
-| 0.2 | Package configuration | ⬜ | | |
+| 0.2 | Package configuration | ✅ | 2026-01-01 | Created pyproject.toml, requirements.txt, requirements-dev.txt |
 
 ---
 
