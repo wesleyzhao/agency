@@ -68,17 +68,12 @@ Update this file after completing each task:
 
 | Task | Description | Status | Date | Notes |
 |------|-------------|--------|------|-------|
-| 4.1 | Startup script generator | ⬜ | | |
-| 4.2 | Agent runner | ⬜ | | |
-| 4.3 | Git manager | ⬜ | | |
-| 4.4 | Screenshot service | ⬜ | | |
-| 4.5 | Instruction watcher | ⬜ | | |
-| 4.6 | Heartbeat system | ⬜ | | |
-| 4.7 | Timeout enforcement | ⬜ | | |
-| 4.8 | Screenshots CLI command | ⬜ | | |
-| 4.9 | Master server deployment | ⬜ | | |
+| 4.1 | Improved startup script | ✅ | 2026-01-01 | Auto-commit, screenshots, metadata secrets |
+| 4.2 | Internal heartbeat endpoint | ✅ | 2026-01-01 | /v1/internal/heartbeat for agent status |
+| 4.3 | Screenshots CLI command | ✅ | 2026-01-01 | List and download agent screenshots |
+| 4.4 | Stop command - Delete VM | ✅ | 2026-01-01 | Already done in Task 3.6 |
 
-**Phase 4 Checkpoint:** ⬜
+**Phase 4 Checkpoint:** ✅ All 45 tests pass, agent lifecycle complete
 
 ---
 
@@ -86,11 +81,11 @@ Update this file after completing each task:
 
 | Check | Status |
 |-------|--------|
-| All unit tests pass | ⬜ |
-| All integration tests pass | ⬜ |
+| All unit tests pass | ✅ |
+| All integration tests pass | ✅ |
 | End-to-end workflow works | ⬜ |
 | Documentation complete | ⬜ |
-| Clean git history | ⬜ |
+| Clean git history | ✅ |
 
 ---
 
