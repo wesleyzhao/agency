@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
 from agentctl.server.database import init_db
-from agentctl.server.routes import agents
+from agentctl.server.routes import agents, internal
 
 
 @asynccontextmanager
@@ -28,3 +28,4 @@ async def health_check():
 
 # Register routes
 app.include_router(agents.router, prefix="/agents", tags=["agents"])
+app.include_router(internal.router, prefix="/v1/internal", tags=["internal"])
