@@ -40,7 +40,7 @@ Update this file after completing each task:
 | Task | Description | Status | Date | Notes |
 |------|-------------|--------|------|-------|
 | 2.1 | Server skeleton | ✅ | 2026-01-01 | FastAPI app with health endpoint |
-| 2.2 | Agent repository | ⬜ | | |
+| 2.2 | Agent repository | ✅ | 2026-01-01 | SQLite CRUD operations |
 | 2.3 | Agent routes | ⬜ | | |
 
 **Phase 2 Checkpoint:** ⬜
