@@ -24,8 +24,7 @@ class CreateAgentRequest(BaseModel):
     timeout_seconds: int = 14400
     machine_type: str = "e2-medium"
     spot: bool = False
-    screenshot_interval: int = 300
-    screenshot_retention: str = "24h"
+    max_iterations: int = 0  # 0 = unlimited
 
 
 class TellRequest(BaseModel):
@@ -70,8 +69,6 @@ async def create_agent(request: CreateAgentRequest):
         timeout_seconds=request.timeout_seconds,
         machine_type=request.machine_type,
         spot=request.spot,
-        screenshot_interval=request.screenshot_interval,
-        screenshot_retention=request.screenshot_retention,
     )
 
     agent = repository.create_agent(config)
@@ -89,13 +86,13 @@ async def create_agent(request: CreateAgentRequest):
             agent_id=agent.id,
             prompt=config.prompt,
             engine=config.engine.value,
-            master_url=app_config.master_server_url or "http://localhost:8000",
+            master_url=app_config.master_server_url or "",
             project=app_config.gcp_project,
             bucket=app_config.gcs_bucket or f"{app_config.gcp_project}-agentctl",
             repo=config.repo or "",
             branch=config.branch or "",
             timeout=config.timeout_seconds,
-            screenshot_interval=config.screenshot_interval,
+            max_iterations=request.max_iterations,
         )
 
         # Fetch secrets to inject into VM metadata
