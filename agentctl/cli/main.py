@@ -19,7 +19,13 @@ def cli(ctx):
 def register_commands():
     """Register all CLI commands."""
     from agentctl.cli.run import run
+    from agentctl.cli.agents import list_agents, status, stop, delete
+
     cli.add_command(run)
+    cli.add_command(list_agents)
+    cli.add_command(status)
+    cli.add_command(stop)
+    cli.add_command(delete)
 
 
 register_commands()
