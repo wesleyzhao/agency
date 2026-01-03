@@ -32,6 +32,7 @@ dev = [
 
 [project.scripts]
 agentctl = "agentctl.cli.main:cli"
+agency-quickdeploy = "agency_quickdeploy.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["."]
