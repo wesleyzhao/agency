@@ -76,9 +76,9 @@ log "Creating Python virtual environment..."
 python3.11 -m venv /opt/agent-venv
 /opt/agent-venv/bin/pip install --upgrade pip
 
-# Install claude-code-sdk in venv
-log "Installing claude-code-sdk..."
-/opt/agent-venv/bin/pip install claude-code-sdk
+# Install claude-agent-sdk in venv
+log "Installing claude-agent-sdk..."
+/opt/agent-venv/bin/pip install claude-agent-sdk
 
 # Make venv accessible to agent user
 chmod -R 755 /opt/agent-venv
@@ -166,11 +166,11 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-# Import claude-code-sdk
+# Import claude-agent-sdk
 try:
-    from claude_code_sdk import query, ClaudeCodeOptions
+    from claude_agent_sdk import query, ClaudeAgentOptions
 except ImportError:
-    print("ERROR: claude-code-sdk not installed")
+    print("ERROR: claude-agent-sdk not installed")
     sys.exit(1)
 
 
@@ -284,7 +284,7 @@ async def run_session(prompt: str, project_dir: Path) -> str:
     log("Starting session...")
 
     response_text = ""
-    options = ClaudeCodeOptions(cwd=str(project_dir))
+    options = ClaudeAgentOptions(cwd=str(project_dir))
     async for message in query(prompt=prompt, options=options):
         if hasattr(message, 'content'):
             for block in message.content:
