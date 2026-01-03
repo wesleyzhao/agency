@@ -89,9 +89,13 @@ report_status "starting" "Dependencies installed, setting up workspace"
 log "Installing Claude Code CLI..."
 npm install -g @anthropic-ai/claude-code
 
-# Install claude-code-sdk for Python harness
-log "Installing claude-code-sdk..."
-pip3 install claude-code-sdk --break-system-packages
+# Create Python virtual environment and install claude-agent-sdk
+log "Setting up Python venv and installing claude-agent-sdk..."
+python3.11 -m venv /opt/agent-venv
+/opt/agent-venv/bin/pip install --upgrade pip
+/opt/agent-venv/bin/pip install claude-agent-sdk
+# Ensure agent user can access the venv
+chmod -R o+rx /opt/agent-venv
 
 # === Fetch Secrets from Instance Metadata ===
 log "Loading secrets from metadata..."
@@ -172,11 +176,11 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-# Import claude-code-sdk
+# Import claude-agent-sdk
 try:
-    from claude_code_sdk import Client
-except ImportError:
-    print("ERROR: claude-code-sdk not installed")
+    from claude_agent_sdk import query, ClaudeAgentOptions
+except ImportError as e:
+    print(f"ERROR: claude-agent-sdk not installed: {e}")
     sys.exit(1)
 
 
@@ -286,18 +290,25 @@ def sync_to_gcs(workspace: Path, bucket: str, agent_id: str):
         )
 
 
-async def run_session(client: Client, prompt: str, project_dir: Path) -> str:
+async def run_session(prompt: str, project_dir: Path) -> str:
     """Run a single agent session."""
     log("Starting session...")
 
-    response_text = ""
-    async for event in client.query(
-        prompt,
+    # Use bypassPermissions for fully autonomous operation
+    options = ClaudeAgentOptions(
         cwd=str(project_dir),
-    ):
-        if hasattr(event, 'text'):
-            print(event.text, end='', flush=True)
-            response_text += event.text
+        permission_mode="bypassPermissions",
+    )
+    response_text = ""
+
+    async for message in query(prompt=prompt, options=options):
+        # Handle different message types
+        if hasattr(message, 'content'):
+            print(message.content, end='', flush=True)
+            response_text += str(message.content)
+        elif hasattr(message, 'result'):
+            print(message.result, end='', flush=True)
+            response_text += str(message.result)
 
     print()  # newline after response
     return response_text
@@ -322,9 +333,6 @@ async def run_agent(
             log(f"Reached max iterations ({max_iterations})")
             break
 
-        # Create fresh client for each session (manages context)
-        client = Client()
-
         # Determine which prompt to use
         if is_first_session(project_dir):
             log("First session - initializing project...")
@@ -348,7 +356,7 @@ async def run_agent(
                     pass
 
         try:
-            await run_session(client, prompt, project_dir)
+            await run_session(prompt, project_dir)
         except Exception as e:
             log(f"Session error: {e}")
 
@@ -427,7 +435,7 @@ fi
 sudo -u agent env \
     ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
     HOME=$AGENT_HOME \
-    python3 $WORKSPACE/run_agent.py \
+    /opt/agent-venv/bin/python3 $WORKSPACE/run_agent.py \
         --workspace $WORKSPACE \
         --project-dir $WORKDIR \
         --bucket $BUCKET \
