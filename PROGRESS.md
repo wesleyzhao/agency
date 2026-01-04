@@ -77,6 +77,22 @@ Update this file after completing each task:
 
 ---
 
+## Phase 5: GCP Agent Deployment Fixes (2026-01-04)
+
+| Task | Description | Status | Date | Notes |
+|------|-------------|--------|------|-------|
+| 5.1 | Fix GCS bucket permissions | ✅ | 2026-01-04 | Auto-grant compute SA in init |
+| 5.2 | Fix VM OAuth scopes | ✅ | 2026-01-04 | Always use cloud-platform scope |
+| 5.3 | Add workspace sync to GCS | ✅ | 2026-01-04 | gsutil rsync for full workspace |
+| 5.4 | Add --no-shutdown flag | ✅ | 2026-01-04 | Keep VM for SSH inspection |
+| 5.5 | Add --wait flag | ✅ | 2026-01-04 | Auto-download when complete |
+| 5.6 | Detect agent-created projects | ✅ | 2026-01-04 | Scan /tmp and home for .git |
+| 5.7 | Validate end-to-end | ✅ | 2026-01-04 | Calculator app: 18 tests pass |
+
+**Phase 5 Checkpoint:** ✅ Full end-to-end workflow validated
+
+---
+
 ## Final Verification
 
 | Check | Status |
@@ -84,6 +100,9 @@ Update this file after completing each task:
 | All unit tests pass | ✅ |
 | All integration tests pass | ✅ |
 | End-to-end workflow works | ✅ |
+| GCP agent deployment works | ✅ |
+| Workspace sync to GCS works | ✅ |
+| Output download works | ✅ |
 | Documentation complete | ✅ |
 | Clean git history | ✅ |
 
@@ -93,10 +112,13 @@ Update this file after completing each task:
 
 | Date | Issue | Resolution |
 |------|-------|------------|
-| | | |
+| 2026-01-04 | VMs couldn't write to GCS | Auto-grant compute SA bucket access in init |
+| 2026-01-04 | Workspace not syncing | Use gsutil rsync, scan multiple locations |
+| 2026-01-04 | Download failing | Create output dir, use rsync not cp |
 
 ---
 
 ## Notes
 
-_Add any notes, learnings, or context here_
+### 2026-01-04 - MVP Complete
+Successfully deployed agent to GCP, built a Python calculator with 18 tests, synced to GCS, downloaded locally, verified all tests pass. Full MVP workflow validated.

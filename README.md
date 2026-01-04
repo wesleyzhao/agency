@@ -77,6 +77,26 @@ agentctl init
 uvicorn agentctl.server.app:app --host 0.0.0.0 --port 8000
 ```
 
+### Test Deploy (Standalone)
+
+For quick testing without the master server:
+
+```bash
+# Deploy agent and wait for output
+python scripts/test_gcp_deploy.py \
+  --prompt "Create a Python calculator with tests" \
+  --wait \
+  --output-dir ./my-output
+
+# Deploy with SSH inspection (VM stays running)
+python scripts/test_gcp_deploy.py \
+  --prompt "Build something" \
+  --no-shutdown
+
+# After completion, SSH in:
+gcloud compute ssh agent-test-XXXXX --zone=us-central1-a
+```
+
 ### Usage
 
 ```bash
@@ -287,9 +307,14 @@ agentctl/
 - [x] GCP integration (Compute Engine, Secret Manager, Cloud Storage)
 - [x] Startup script with auto-commit and screenshots
 - [x] Heartbeat system for agent status
+- [x] Workspace sync to GCS
+- [x] Output download after completion
+- [x] SSH inspection mode (--no-shutdown)
 - [ ] Web UI dashboard
 - [ ] Cost tracking
 - [ ] Multi-user support
+- [ ] Pre-baked VM images (faster startup)
+- [ ] Container-based agents (cheaper)
 
 ## License
 

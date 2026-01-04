@@ -65,9 +65,18 @@ Keep a "debug mode" VM running without auto-shutdown for SSH debugging.
 
 ## Current Issues to Fix
 
-1. **VM terminates too quickly** - Need to capture logs before shutdown
-2. **Serial port output not ready** - VM shuts down before we can read logs
-3. **Claude Code execution unknown** - Can't tell if it ran successfully
+_None - all major issues resolved as of 2026-01-04_
+
+---
+
+## Resolved Issues (2026-01-04)
+
+1. ~~**VM terminates too quickly**~~ - FIXED: Added --no-shutdown flag, logs upload before shutdown
+2. ~~**Serial port output not ready**~~ - FIXED: Logs sync to GCS, can download anytime
+3. ~~**Claude Code execution unknown**~~ - FIXED: Full output synced to GCS workspace
+4. ~~**GCS bucket permissions**~~ - FIXED: Auto-grant compute service account in `agentctl init`
+5. ~~**VM OAuth scopes**~~ - FIXED: Always use cloud-platform scope for write access
+6. ~~**Workspace not synced**~~ - FIXED: gsutil rsync syncs entire workspace + detects agent-created projects
 
 ---
 
@@ -80,7 +89,14 @@ Keep a "debug mode" VM running without auto-shutdown for SSH debugging.
 - Injected Anthropic API key via VM metadata from Secret Manager
 - Added helper script for prompt handling to avoid quoting issues
 
-### What Still Needs Work
-- VM terminates quickly, can't capture full logs
-- Need to verify Claude Code actually runs the task
-- Testing cycle is too slow (5-10 mins per iteration)
+---
+
+## Notes from 2026-01-04 Testing Session
+
+### What We Fixed
+- Workspace sync to GCS using `gsutil -m rsync`
+- --no-shutdown flag for VM inspection after completion
+- --wait flag for automatic download when agent completes
+- Detects agent-created projects in /tmp and agent home
+- Fixed download step to create output directory
+- Validated full end-to-end: prompt → agent builds → download → tests pass
