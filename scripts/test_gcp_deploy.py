@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Test GCP deployment of an agent."""
+import os
 import sys
 import time
 import argparse
+import subprocess
 
 # Add project root to path
 sys.path.insert(0, "/Users/wesley/projects/agency")
+
+# Ensure gcloud tools are in PATH
+GCLOUD_PATH = os.path.expanduser("~/google-cloud-sdk/bin")
+if GCLOUD_PATH not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{GCLOUD_PATH}:{os.environ.get('PATH', '')}"
 
 from agentctl.shared.config import Config
 from agentctl.server.services.vm_manager import VMManager
@@ -19,7 +26,9 @@ def main():
     parser.add_argument("--max-iterations", type=int, default=1)
     parser.add_argument("--machine-type", default="e2-medium")
     parser.add_argument("--spot", action="store_true", help="Use spot instance")
-    parser.add_argument("--cleanup", action="store_true", help="Delete VM after test")
+    parser.add_argument("--no-shutdown", action="store_true", help="Keep VM running after completion for SSH inspection")
+    parser.add_argument("--wait", action="store_true", help="Wait for completion and download output")
+    parser.add_argument("--output-dir", default="./agent-output", help="Directory to download output to")
     args = parser.parse_args()
 
     # Load config
@@ -34,6 +43,7 @@ def main():
     print(f"Bucket: {config.gcs_bucket}")
     print(f"Prompt: {args.prompt}")
     print(f"Max iterations: {args.max_iterations}")
+    print(f"No shutdown: {args.no_shutdown}")
     print()
 
     # Generate agent ID
@@ -50,6 +60,8 @@ def main():
         bucket=config.gcs_bucket or f"{config.gcp_project}-agentctl",
         master_url="",  # No master server for this test
         max_iterations=args.max_iterations,
+        no_shutdown=args.no_shutdown,
+        zone=config.gcp_zone,
     )
 
     # Save startup script for inspection
@@ -102,24 +114,58 @@ def main():
         print(f"ERROR: Failed to create VM: {e}")
         sys.exit(1)
 
+    gcs_base = f"gs://{config.gcs_bucket}/agents/{agent_id}"
+
     # Monitor VM
     print()
     print("=== Monitoring VM ===")
     print("The VM is now running the startup script. This may take 5-10 minutes.")
-    print(f"View logs: gcloud compute instances get-serial-port-output {instance_name} --zone={config.gcp_zone} --project={config.gcp_project}")
-    print(f"SSH: gcloud compute ssh {instance_name} --zone={config.gcp_zone} --project={config.gcp_project}")
     print()
-    print(f"GCS output will be at: gs://{config.gcs_bucket}/agents/{agent_id}/")
+    print("Useful commands:")
+    print(f"  View logs:     gsutil cat {gcs_base}/logs/agent.log")
+    print(f"  Check status:  gsutil cat {gcs_base}/status")
+    print(f"  List output:   gsutil ls -r {gcs_base}/")
+    print(f"  Download all:  gsutil -m cp -r {gcs_base}/workspace/ ./agent-output/")
+    print()
+    if args.no_shutdown:
+        print(f"  SSH (after completion): gcloud compute ssh {instance_name} --zone={config.gcp_zone} --project={config.gcp_project}")
+    print(f"  Delete VM:     gcloud compute instances delete {instance_name} --zone={config.gcp_zone} --project={config.gcp_project}")
     print()
 
-    if args.cleanup:
-        print("Waiting 60 seconds before cleanup...")
-        time.sleep(60)
-        print(f"Deleting VM {instance_name}...")
-        vm.delete_instance(instance_name)
-        print("VM deleted.")
-    else:
-        print(f"To delete the VM later: gcloud compute instances delete {instance_name} --zone={config.gcp_zone} --project={config.gcp_project}")
+    if args.wait:
+        print("=== Waiting for completion ===")
+        while True:
+            # Check status
+            result = subprocess.run(
+                ["gsutil", "cat", f"{gcs_base}/status"],
+                capture_output=True, text=True
+            )
+            status = result.stdout.strip()
+
+            if status in ["completed", "failed"]:
+                print(f"\nAgent finished with status: {status}")
+                break
+
+            print(f"  Status: {status or 'starting...'}", end="\r")
+            time.sleep(30)
+
+        # Download output
+        print(f"\nDownloading output to {args.output_dir}/")
+        subprocess.run([
+            "gsutil", "-m", "cp", "-r",
+            f"{gcs_base}/workspace/",
+            f"{args.output_dir}/"
+        ])
+
+        # Show what was downloaded
+        print("\n=== Downloaded Files ===")
+        subprocess.run(["find", args.output_dir, "-type", "f"])
+
+        # Show the log
+        print("\n=== Agent Log (last 50 lines) ===")
+        subprocess.run([
+            "gsutil", "cat", f"{gcs_base}/logs/agent.log"
+        ])
 
 
 if __name__ == "__main__":

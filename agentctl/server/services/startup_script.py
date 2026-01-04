@@ -21,6 +21,7 @@ BUCKET="__BUCKET__"
 TIMEOUT=__TIMEOUT__
 MAX_ITERATIONS=__MAX_ITERATIONS__
 MASTER_URL="__MASTER_URL__"
+NO_SHUTDOWN="__NO_SHUTDOWN__"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/agent.log; }
 
@@ -465,11 +466,32 @@ log "Agent finished with exit code $EXIT_CODE"
 # Kill background sync
 kill $SYNC_PID 2>/dev/null || true
 
-# Final sync
+# Final sync - upload workspaces to GCS
 log "Final GCS sync..."
-gsutil -q cp $WORKSPACE/feature_list.json gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
-gsutil -q cp $WORKSPACE/claude-progress.txt gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
-gsutil -q cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/ 2>/dev/null || true
+
+# Sync the designated project directory
+log "Syncing project dir to gs://$BUCKET/agents/$AGENT_ID/workspace/"
+gsutil -m rsync -r $WORKDIR gs://$BUCKET/agents/$AGENT_ID/workspace/ 2>&1 || log "Warning: project sync failed"
+
+# Also sync any projects the agent created in /tmp (common pattern)
+for dir in /tmp/*; do
+    if [ -d "$dir/.git" ] || [ -f "$dir/feature_list.json" ]; then
+        dirname=$(basename "$dir")
+        log "Syncing agent-created project: $dir -> gs://$BUCKET/agents/$AGENT_ID/workspace/$dirname/"
+        gsutil -m rsync -r "$dir" "gs://$BUCKET/agents/$AGENT_ID/workspace/$dirname/" 2>&1 || true
+    fi
+done
+
+# Sync agent home directory projects
+for dir in $AGENT_HOME/*; do
+    if [ -d "$dir/.git" ] || [ -f "$dir/feature_list.json" ]; then
+        dirname=$(basename "$dir")
+        log "Syncing agent home project: $dir -> gs://$BUCKET/agents/$AGENT_ID/workspace/$dirname/"
+        gsutil -m rsync -r "$dir" "gs://$BUCKET/agents/$AGENT_ID/workspace/$dirname/" 2>&1 || true
+    fi
+done
+
+gsutil cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/agent.log 2>&1 || true
 
 # Report final status
 if [ $EXIT_CODE -eq 0 ]; then
@@ -478,8 +500,16 @@ else
     report_status "failed" "Agent exited with code $EXIT_CODE"
 fi
 
-log "Shutting down VM..."
-shutdown -h now
+# Shutdown unless NO_SHUTDOWN is set
+if [ "$NO_SHUTDOWN" = "true" ]; then
+    log "NO_SHUTDOWN set - VM will remain running for inspection"
+    log "SSH: gcloud compute ssh $HOSTNAME --zone=__ZONE__ --project=$PROJECT"
+    log "Workspace: $WORKDIR"
+    log "To shutdown: sudo shutdown -h now"
+else
+    log "Shutting down VM..."
+    shutdown -h now
+fi
 '''
 
 
@@ -494,6 +524,8 @@ def generate_startup_script(
     branch: str = "",
     timeout: int = 14400,
     max_iterations: int = 0,
+    no_shutdown: bool = False,
+    zone: str = "us-central1-a",
     **kwargs,  # Accept but ignore unused params for backwards compatibility
 ) -> str:
     """Generate startup script for continuous agent VM.
@@ -509,6 +541,8 @@ def generate_startup_script(
         branch: Git branch to work on (optional)
         timeout: Not used (kept for API compatibility)
         max_iterations: Max agent iterations (0 = unlimited)
+        no_shutdown: If True, VM stays running after completion for inspection
+        zone: GCP zone (for SSH instructions)
 
     Returns:
         Bash startup script as a string
@@ -527,4 +561,6 @@ def generate_startup_script(
     script = script.replace("__BRANCH__", branch or "")
     script = script.replace("__TIMEOUT__", str(timeout))
     script = script.replace("__MAX_ITERATIONS__", str(max_iterations))
+    script = script.replace("__NO_SHUTDOWN__", "true" if no_shutdown else "false")
+    script = script.replace("__ZONE__", zone)
     return script
