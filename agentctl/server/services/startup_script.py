@@ -102,17 +102,48 @@ log "Loading secrets from metadata..."
 METADATA_URL="http://metadata.google.internal/computeMetadata/v1/instance/attributes"
 METADATA_HEADER="Metadata-Flavor: Google"
 
-ANTHROPIC_API_KEY=$(curl -s "$METADATA_URL/anthropic-api-key" -H "$METADATA_HEADER" || echo "")
+# Determine authentication type (api_key or oauth)
+AUTH_TYPE=$(curl -s "$METADATA_URL/auth-type" -H "$METADATA_HEADER" 2>/dev/null || echo "api_key")
 GITHUB_TOKEN=$(curl -s "$METADATA_URL/github-token" -H "$METADATA_HEADER" 2>/dev/null || echo "")
 
-if [ -z "$ANTHROPIC_API_KEY" ]; then
-    log "ERROR: No Anthropic API key found in metadata!"
-    # Upload error log to GCS before exiting
-    gsutil cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/startup.log 2>/dev/null || true
-    exit 1
-fi
+log "Auth type: $AUTH_TYPE"
 
-export ANTHROPIC_API_KEY
+if [ "$AUTH_TYPE" = "oauth" ]; then
+    # OAuth authentication flow
+    log "Setting up OAuth authentication..."
+    OAUTH_CREDENTIALS=$(curl -s "$METADATA_URL/oauth-credentials" -H "$METADATA_HEADER" 2>/dev/null || echo "")
+
+    if [ -z "$OAUTH_CREDENTIALS" ]; then
+        log "ERROR: No OAuth credentials found in metadata!"
+        gsutil cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/startup.log 2>/dev/null || true
+        exit 1
+    fi
+
+    # Create .claude directory and credentials file for agent user
+    mkdir -p $AGENT_HOME/.claude
+    echo "$OAUTH_CREDENTIALS" > $AGENT_HOME/.claude/.credentials.json
+    chown -R agent:agent $AGENT_HOME/.claude
+    chmod 600 $AGENT_HOME/.claude/.credentials.json
+
+    # Extract access token for environment variable (fallback)
+    CLAUDE_CODE_OAUTH_TOKEN=$(echo "$OAUTH_CREDENTIALS" | jq -r '.claudeAiOauth.accessToken // empty')
+    export CLAUDE_CODE_OAUTH_TOKEN
+
+    log "OAuth credentials configured"
+else
+    # API key authentication flow (default)
+    log "Setting up API key authentication..."
+    ANTHROPIC_API_KEY=$(curl -s "$METADATA_URL/anthropic-api-key" -H "$METADATA_HEADER" || echo "")
+
+    if [ -z "$ANTHROPIC_API_KEY" ]; then
+        log "ERROR: No Anthropic API key found in metadata!"
+        gsutil cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/startup.log 2>/dev/null || true
+        exit 1
+    fi
+
+    export ANTHROPIC_API_KEY
+    log "API key configured"
+fi
 
 # === Setup Workspace ===
 log "Setting up workspace..."
@@ -432,16 +463,30 @@ if [ "$MAX_ITERATIONS" -gt 0 ]; then
     MAX_ITER_ARG="--max-iterations $MAX_ITERATIONS"
 fi
 
-sudo -u agent env \
-    ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-    HOME=$AGENT_HOME \
-    /opt/agent-venv/bin/python3 $WORKSPACE/run_agent.py \
-        --workspace $WORKSPACE \
-        --project-dir $WORKDIR \
-        --bucket $BUCKET \
-        --agent-id $AGENT_ID \
-        $MAX_ITER_ARG \
-    2>&1 | tee -a /var/log/agent.log
+# Build environment variables based on auth type
+if [ "$AUTH_TYPE" = "oauth" ]; then
+    sudo -u agent env \
+        CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
+        HOME=$AGENT_HOME \
+        /opt/agent-venv/bin/python3 $WORKSPACE/run_agent.py \
+            --workspace $WORKSPACE \
+            --project-dir $WORKDIR \
+            --bucket $BUCKET \
+            --agent-id $AGENT_ID \
+            $MAX_ITER_ARG \
+        2>&1 | tee -a /var/log/agent.log
+else
+    sudo -u agent env \
+        ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+        HOME=$AGENT_HOME \
+        /opt/agent-venv/bin/python3 $WORKSPACE/run_agent.py \
+            --workspace $WORKSPACE \
+            --project-dir $WORKDIR \
+            --bucket $BUCKET \
+            --agent-id $AGENT_ID \
+            $MAX_ITER_ARG \
+        2>&1 | tee -a /var/log/agent.log
+fi
 
 EXIT_CODE=$?
 
