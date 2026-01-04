@@ -2,6 +2,7 @@
 
 This module ties together all components to launch and manage agents.
 """
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -90,6 +91,7 @@ class QuickDeployLauncher:
         branch: Optional[str] = None,
         spot: bool = False,
         max_iterations: int = 0,
+        no_shutdown: bool = False,
     ) -> LaunchResult:
         """Launch a new agent.
 
@@ -100,6 +102,7 @@ class QuickDeployLauncher:
             branch: Git branch to use
             spot: Use spot/preemptible instance
             max_iterations: Max iterations (0 = unlimited)
+            no_shutdown: Keep VM running after agent completes (for inspection)
 
         Returns:
             LaunchResult with agent info
@@ -111,8 +114,12 @@ class QuickDeployLauncher:
             # Ensure bucket exists
             self.storage.ensure_bucket(location=self.config.gcp_region)
 
-            # Get API key from Secret Manager
-            api_key = self.secrets.get(self.config.anthropic_api_key_secret)
+            # Get API key: prefer env var, fall back to Secret Manager
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                # Fall back to Secret Manager
+                api_key = self.secrets.get(self.config.anthropic_api_key_secret)
+
             if not api_key:
                 return LaunchResult(
                     agent_id=agent_id,
@@ -121,7 +128,7 @@ class QuickDeployLauncher:
                     project=self.config.gcp_project,
                     gcs_bucket=self.config.gcs_bucket,
                     status="failed",
-                    error=f"API key not found in Secret Manager: {self.config.anthropic_api_key_secret}",
+                    error="API key not found. Set ANTHROPIC_API_KEY env var or store in Secret Manager.",
                 )
 
             # Generate startup script
@@ -133,6 +140,7 @@ class QuickDeployLauncher:
                 repo=repo or "",
                 branch=branch or "",
                 max_iterations=max_iterations,
+                no_shutdown=no_shutdown,
             )
 
             # Create VM

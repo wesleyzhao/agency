@@ -196,3 +196,70 @@ class TestListAgents:
         agents = launcher.list_agents()
 
         assert len(agents) == 2
+
+
+class TestEnvVarApiKey:
+    """Tests for environment variable API key support."""
+
+    @patch("agency_quickdeploy.launcher.VMManager")
+    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
+    @patch("agency_quickdeploy.launcher.SecretManager")
+    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test-from-env"})
+    def test_uses_env_var_api_key_when_set(
+        self, mock_secret_class, mock_storage_class, mock_vm_class
+    ):
+        """Should use ANTHROPIC_API_KEY env var when set, skipping Secret Manager."""
+        from agency_quickdeploy.launcher import QuickDeployLauncher
+        from agency_quickdeploy.config import QuickDeployConfig
+
+        mock_storage = MagicMock()
+        mock_storage_class.return_value = mock_storage
+
+        mock_vm = MagicMock()
+        mock_vm.create.return_value = {"name": "test", "status": "creating"}
+        mock_vm_class.return_value = mock_vm
+
+        config = QuickDeployConfig(gcp_project="test-project")
+        launcher = QuickDeployLauncher(config)
+
+        result = launcher.launch("Build an app")
+
+        # Should NOT call Secret Manager since env var is set
+        mock_secret_class.return_value.get.assert_not_called()
+        # Should still create VM successfully
+        assert result.status in ["launching", "running", "creating"]
+
+    @patch("agency_quickdeploy.launcher.VMManager")
+    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
+    @patch("agency_quickdeploy.launcher.SecretManager")
+    @patch.dict("os.environ", {}, clear=True)
+    def test_falls_back_to_secret_manager_when_no_env_var(
+        self, mock_secret_class, mock_storage_class, mock_vm_class
+    ):
+        """Should fall back to Secret Manager when ANTHROPIC_API_KEY not set."""
+        import os
+        # Ensure env var is not set
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+
+        from agency_quickdeploy.launcher import QuickDeployLauncher
+        from agency_quickdeploy.config import QuickDeployConfig
+
+        mock_secret = MagicMock()
+        mock_secret.get.return_value = "test-api-key-from-secret"
+        mock_secret_class.return_value = mock_secret
+
+        mock_storage = MagicMock()
+        mock_storage_class.return_value = mock_storage
+
+        mock_vm = MagicMock()
+        mock_vm.create.return_value = {"name": "test", "status": "creating"}
+        mock_vm_class.return_value = mock_vm
+
+        config = QuickDeployConfig(gcp_project="test-project")
+        launcher = QuickDeployLauncher(config)
+
+        result = launcher.launch("Build an app")
+
+        # Should call Secret Manager since env var is not set
+        mock_secret.get.assert_called_once()
+        assert result.status in ["launching", "running", "creating"]

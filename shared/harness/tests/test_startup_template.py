@@ -226,8 +226,8 @@ class TestGenerateStartupScript:
 
         assert "gsutil" in script or "gcs" in script.lower()
 
-    def test_shuts_down_on_completion(self):
-        """Script should shutdown VM after agent completes."""
+    def test_shuts_down_on_completion_by_default(self):
+        """Script should shutdown VM after agent completes (default behavior)."""
         from shared.harness.startup_template import generate_startup_script
 
         script = generate_startup_script(
@@ -238,6 +238,38 @@ class TestGenerateStartupScript:
         )
 
         assert "shutdown" in script
+
+    def test_no_shutdown_flag_disables_shutdown(self):
+        """When no_shutdown=True, script should NOT shutdown VM."""
+        from shared.harness.startup_template import generate_startup_script
+
+        script = generate_startup_script(
+            agent_id="test-agent",
+            prompt="Test prompt",
+            project="test-project",
+            bucket="test-bucket",
+            no_shutdown=True,
+        )
+
+        # The shutdown command should be skipped when no_shutdown is True
+        # Check that either shutdown is not present OR it's inside a conditional that won't execute
+        assert 'NO_SHUTDOWN="true"' in script or 'NO_SHUTDOWN=true' in script
+
+    def test_no_shutdown_false_includes_shutdown(self):
+        """When no_shutdown=False (explicit), script should shutdown VM."""
+        from shared.harness.startup_template import generate_startup_script
+
+        script = generate_startup_script(
+            agent_id="test-agent",
+            prompt="Test prompt",
+            project="test-project",
+            bucket="test-bucket",
+            no_shutdown=False,
+        )
+
+        assert "shutdown" in script
+        # Should NOT have the no-shutdown flag set
+        assert 'NO_SHUTDOWN="true"' not in script
 
 
 class TestStartupTemplateStructure:

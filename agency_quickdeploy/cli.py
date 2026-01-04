@@ -27,7 +27,8 @@ def cli():
 @click.option("--branch", "-b", help="Git branch to use")
 @click.option("--spot", is_flag=True, help="Use spot/preemptible instance (cheaper)")
 @click.option("--max-iterations", "-m", type=int, default=0, help="Max iterations (0=unlimited)")
-def launch(prompt, name, repo, branch, spot, max_iterations):
+@click.option("--no-shutdown", is_flag=True, help="Keep VM running after completion (for inspection)")
+def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown):
     """Launch a new agent with the given PROMPT.
 
     Example:
@@ -53,6 +54,7 @@ def launch(prompt, name, repo, branch, spot, max_iterations):
         branch=branch,
         spot=spot,
         max_iterations=max_iterations,
+        no_shutdown=no_shutdown,
     )
 
     if result.error:
@@ -62,9 +64,16 @@ def launch(prompt, name, repo, branch, spot, max_iterations):
     console.print(f"\n[green]Agent launched successfully![/green]")
     console.print(f"  Agent ID: {result.agent_id}")
     console.print(f"  Status: {result.status}")
+    if no_shutdown:
+        console.print(f"  [yellow]NO_SHUTDOWN mode:[/yellow] VM will stay running after completion")
     console.print(f"\nMonitor progress:")
     console.print(f"  agency-quickdeploy status {result.agent_id}")
     console.print(f"  agency-quickdeploy logs {result.agent_id}")
+    if no_shutdown:
+        console.print(f"\nSSH into VM:")
+        console.print(f"  gcloud compute ssh {result.agent_id} --zone={config.gcp_zone} --project={config.gcp_project}")
+        console.print(f"\nStop when done:")
+        console.print(f"  agency-quickdeploy stop {result.agent_id}")
 
 
 @cli.command()

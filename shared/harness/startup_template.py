@@ -446,8 +446,16 @@ else
     write_status "failed"
 fi
 
-log "Shutting down VM..."
-shutdown -h now
+# Shutdown VM unless NO_SHUTDOWN is set
+NO_SHUTDOWN="__NO_SHUTDOWN__"
+if [ "$NO_SHUTDOWN" != "true" ]; then
+    log "Shutting down VM..."
+    shutdown -h now
+else
+    log "NO_SHUTDOWN is set - VM will remain running for inspection"
+    log "SSH in with: gcloud compute ssh $AGENT_ID --zone=<zone> --project=$PROJECT"
+    log "Stop manually with: agency-quickdeploy stop $AGENT_ID"
+fi
 '''
 
 
@@ -459,6 +467,7 @@ def generate_startup_script(
     repo: str = "",
     branch: str = "",
     max_iterations: int = 0,
+    no_shutdown: bool = False,
 ) -> str:
     """Generate startup script for a continuous Claude Code agent VM.
 
@@ -470,6 +479,7 @@ def generate_startup_script(
         repo: Git repository URL to clone (optional)
         branch: Git branch to work on (optional)
         max_iterations: Max agent iterations (0 = unlimited)
+        no_shutdown: If True, VM stays running after agent completes (for inspection)
 
     Returns:
         Bash startup script as a string
@@ -488,5 +498,6 @@ def generate_startup_script(
     script = script.replace("__REPO__", repo or "")
     script = script.replace("__BRANCH__", branch or "")
     script = script.replace("__MAX_ITERATIONS__", str(max_iterations))
+    script = script.replace("__NO_SHUTDOWN__", "true" if no_shutdown else "false")
 
     return script
