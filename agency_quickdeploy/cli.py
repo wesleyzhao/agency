@@ -7,10 +7,13 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from agency_quickdeploy.config import load_config, ConfigError
+from agency_quickdeploy.config import load_config, load_dotenv, ConfigError
 from agency_quickdeploy.launcher import QuickDeployLauncher
 
 console = Console()
+
+# Load .env file if it exists (before any commands run)
+load_dotenv()
 
 
 @click.group()

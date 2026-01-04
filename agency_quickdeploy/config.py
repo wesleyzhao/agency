@@ -14,6 +14,37 @@ class ConfigError(Exception):
     pass
 
 
+def load_dotenv(path: str = ".env") -> None:
+    """Load environment variables from a .env file.
+
+    Simple implementation without external dependencies.
+    Supports: KEY=value format, comments (#), empty lines.
+
+    Args:
+        path: Path to .env file (default: .env in current directory)
+    """
+    try:
+        with open(path, "r") as f:
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments
+                if not line or line.startswith("#"):
+                    continue
+                # Parse KEY=value
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip()
+                    # Remove surrounding quotes if present
+                    if (value.startswith('"') and value.endswith('"')) or \
+                       (value.startswith("'") and value.endswith("'")):
+                        value = value[1:-1]
+                    os.environ[key] = value
+    except FileNotFoundError:
+        # .env file doesn't exist, that's fine
+        pass
+
+
 @dataclass
 class QuickDeployConfig:
     """Configuration for agency-quickdeploy operations.

@@ -263,3 +263,60 @@ class TestEnvVarApiKey:
         # Should call Secret Manager since env var is not set
         mock_secret.get.assert_called_once()
         assert result.status in ["launching", "running", "creating"]
+
+
+class TestDotEnvSupport:
+    """Tests for .env file loading."""
+
+    def test_load_dotenv_populates_environ(self, tmp_path):
+        """load_dotenv should read .env file and populate os.environ."""
+        from agency_quickdeploy.config import load_dotenv
+        import os
+
+        # Create a .env file
+        env_file = tmp_path / ".env"
+        env_file.write_text("TEST_VAR_12345=hello_from_dotenv\n")
+
+        # Clear any existing value
+        os.environ.pop("TEST_VAR_12345", None)
+
+        # Load the .env file
+        load_dotenv(str(env_file))
+
+        # Should be in os.environ now
+        assert os.environ.get("TEST_VAR_12345") == "hello_from_dotenv"
+
+        # Cleanup
+        os.environ.pop("TEST_VAR_12345", None)
+
+    def test_load_dotenv_handles_missing_file(self):
+        """load_dotenv should not error if .env file doesn't exist."""
+        from agency_quickdeploy.config import load_dotenv
+
+        # Should not raise
+        load_dotenv("/nonexistent/path/.env")
+
+    def test_load_dotenv_skips_comments_and_empty_lines(self, tmp_path):
+        """load_dotenv should skip comments and empty lines."""
+        from agency_quickdeploy.config import load_dotenv
+        import os
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("""# This is a comment
+TEST_VAR_ABC=value1
+
+# Another comment
+TEST_VAR_DEF=value2
+""")
+
+        os.environ.pop("TEST_VAR_ABC", None)
+        os.environ.pop("TEST_VAR_DEF", None)
+
+        load_dotenv(str(env_file))
+
+        assert os.environ.get("TEST_VAR_ABC") == "value1"
+        assert os.environ.get("TEST_VAR_DEF") == "value2"
+
+        # Cleanup
+        os.environ.pop("TEST_VAR_ABC", None)
+        os.environ.pop("TEST_VAR_DEF", None)
