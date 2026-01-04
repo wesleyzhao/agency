@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 from agency_quickdeploy.config import QuickDeployConfig
+from agency_quickdeploy.auth import AuthType, Credentials, parse_oauth_credentials_json
 from agency_quickdeploy.gcp.vm import VMManager
 from agency_quickdeploy.gcp.storage import QuickDeployStorage
 from agency_quickdeploy.gcp.secrets import SecretManager
@@ -83,6 +84,56 @@ class QuickDeployLauncher:
         short_uuid = str(uuid.uuid4())[:8]
         return f"agent-{timestamp}-{short_uuid}"
 
+    def _get_credentials(self) -> Optional[Credentials]:
+        """Get credentials based on configured auth type.
+
+        For API key auth:
+            1. Check ANTHROPIC_API_KEY env var
+            2. Fall back to Secret Manager
+
+        For OAuth auth:
+            1. Check CLAUDE_CODE_OAUTH_TOKEN env var
+            2. Fall back to Secret Manager (expects full credentials JSON)
+
+        Returns:
+            Credentials object or None if not found
+        """
+        if self.config.auth_type == AuthType.OAUTH:
+            return self._get_oauth_credentials()
+        else:
+            return self._get_api_key_credentials()
+
+    def _get_api_key_credentials(self) -> Optional[Credentials]:
+        """Get API key credentials."""
+        # Try env var first
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if api_key:
+            return Credentials.from_api_key(api_key)
+
+        # Fall back to Secret Manager
+        api_key = self.secrets.get(self.config.anthropic_api_key_secret)
+        if api_key:
+            return Credentials.from_api_key(api_key)
+
+        return None
+
+    def _get_oauth_credentials(self) -> Optional[Credentials]:
+        """Get OAuth credentials."""
+        # Try env var first (just the token)
+        oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        if oauth_token:
+            # Create minimal credentials with just the access token
+            from agency_quickdeploy.auth import OAuthCredentials
+            oauth = OAuthCredentials(access_token=oauth_token)
+            return Credentials.from_oauth(oauth)
+
+        # Fall back to Secret Manager (expects full credentials JSON)
+        credentials_json = self.secrets.get(self.config.oauth_credentials_secret)
+        if credentials_json:
+            return Credentials.from_oauth_json(credentials_json)
+
+        return None
+
     def launch(
         self,
         prompt: str,
@@ -114,13 +165,21 @@ class QuickDeployLauncher:
             # Ensure bucket exists
             self.storage.ensure_bucket(location=self.config.gcp_region)
 
-            # Get API key: prefer env var, fall back to Secret Manager
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
-            if not api_key:
-                # Fall back to Secret Manager
-                api_key = self.secrets.get(self.config.anthropic_api_key_secret)
-
-            if not api_key:
+            # Get credentials based on auth type
+            credentials = self._get_credentials()
+            if credentials is None:
+                if self.config.auth_type == AuthType.OAUTH:
+                    error_msg = (
+                        "OAuth credentials not found. Either:\n"
+                        "  1. Set CLAUDE_CODE_OAUTH_TOKEN env var, or\n"
+                        f"  2. Store credentials in Secret Manager as '{self.config.oauth_credentials_secret}'"
+                    )
+                else:
+                    error_msg = (
+                        "API key not found. Either:\n"
+                        "  1. Set ANTHROPIC_API_KEY env var, or\n"
+                        f"  2. Store in Secret Manager as '{self.config.anthropic_api_key_secret}'"
+                    )
                 return LaunchResult(
                     agent_id=agent_id,
                     vm_name=agent_id,
@@ -128,7 +187,7 @@ class QuickDeployLauncher:
                     project=self.config.gcp_project,
                     gcs_bucket=self.config.gcs_bucket,
                     status="failed",
-                    error="API key not found. Set ANTHROPIC_API_KEY env var or store in Secret Manager.",
+                    error=error_msg,
                 )
 
             # Generate startup script
@@ -143,14 +202,15 @@ class QuickDeployLauncher:
                 no_shutdown=no_shutdown,
             )
 
+            # Get VM metadata from credentials (includes auth-type and credential data)
+            vm_metadata = credentials.get_vm_metadata()
+
             # Create VM
             vm_result = self.vm_manager.create(
                 name=agent_id,
                 machine_type=self.config.machine_type,
                 startup_script=startup_script,
-                metadata={
-                    "anthropic-api-key": api_key,
-                },
+                metadata=vm_metadata,
                 spot=spot,
                 labels={
                     "agency-quickdeploy": "true",
