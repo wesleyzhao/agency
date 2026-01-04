@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation Quick Reference
+
+**Current Work & Issues:** See [BACKLOG.md](BACKLOG.md) for known issues, bugs, and planned features.
+
+**Detailed Documentation:**
+- **API Reference:** [docs/api/API.md](docs/api/API.md) - REST API specification
+- **CLI Commands:** [docs/cli/COMMANDS.md](docs/cli/COMMANDS.md) - Complete CLI reference
+- **Deployment Guide:** [docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) - GCP setup & deployment
+- **Security:** [docs/deployment/SECURITY.md](docs/deployment/SECURITY.md) - Security model & best practices
+- **Architecture:** [docs/architecture/TECHNICAL_SPEC.md](docs/architecture/TECHNICAL_SPEC.md) - Technical architecture
+- **PRD:** [docs/architecture/PRD.md](docs/architecture/PRD.md) - Product requirements
+- **Architecture Review:** [docs/architecture/ARCHITECTURE_REVIEW.md](docs/architecture/ARCHITECTURE_REVIEW.md)
+
+**Historical Context:** [docs/archive/](docs/archive/) contains completed work logs and planning documents.
+
 ## Build and Test Commands
 
 ```bash
