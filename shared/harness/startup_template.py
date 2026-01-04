@@ -246,8 +246,10 @@ Create feature_list.json with this structure:
 - Mark all features as "pending" initially
 - The feature list is the source of truth for what needs to be done
 - Make sure init.sh is executable and works
+- You are running autonomously - DO NOT ask for permission, just create the files directly
+- You have FULL permission to create, edit, and delete any files
 
-Start by creating the feature_list.json file."""
+Start by creating the feature_list.json file immediately - do not ask, just create it."""
 
 
 def get_coding_prompt(app_spec: str, progress: str) -> str:
@@ -317,7 +319,10 @@ async def run_session(prompt: str, project_dir: Path) -> str:
     log("Starting session...")
 
     response_text = ""
-    options = ClaudeAgentOptions(cwd=str(project_dir))
+    options = ClaudeAgentOptions(
+        cwd=str(project_dir),
+        permission_mode='bypassPermissions',  # Auto-accept all file operations
+    )
     async for message in query(prompt=prompt, options=options):
         if hasattr(message, 'content'):
             for block in message.content:
