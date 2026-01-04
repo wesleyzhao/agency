@@ -1,6 +1,11 @@
 # Contributing to AgentCtl
 
-Thank you for your interest in contributing to AgentCtl! This document provides guidelines and instructions for contributors.
+Thank you for your interest in contributing! This repository contains two complementary tools for running autonomous AI coding agents:
+
+- **agency-quickdeploy** - Standalone launcher (no server needed)
+- **agentctl** - Full-featured with master server
+
+This document provides guidelines for contributing to either or both tools.
 
 ## Code of Conduct
 
@@ -13,6 +18,7 @@ Be respectful, inclusive, and constructive. We're all here to build something us
 - Python 3.11+
 - Google Cloud SDK (`gcloud`) - for GCP integration tests
 - Git
+- **For testing**: GCP project with billing enabled, Anthropic API key or Claude Code OAuth token
 
 ### Development Setup
 
@@ -28,23 +34,34 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install in development mode with all dependencies
 pip install -e ".[dev,server]"
 
+# Set up environment for testing
+cp .env.example .env
+# Edit .env and add your credentials
+
 # Verify installation
+agency-quickdeploy --help
 agentctl --version
-pytest tests/unit/ -v
+pytest -v
 ```
 
 ### Running Tests
 
 ```bash
-# Unit tests (no external dependencies)
+# All unit tests (135 tests total)
+pytest -v
+
+# agency-quickdeploy tests only (includes shared harness)
+pytest agency_quickdeploy/tests/ shared/harness/tests/ -v
+
+# agentctl unit tests only
 pytest tests/unit/ -v
 
-# Integration tests (requires running server)
+# agentctl integration tests (requires running server)
 uvicorn agentctl.server.app:app --port 8000 &
 pytest tests/integration/ -v
 
 # All tests with coverage
-pytest --cov=agentctl --cov-report=html tests/
+pytest --cov=agency_quickdeploy --cov=agentctl --cov=shared --cov-report=html
 ```
 
 ### Running Locally
@@ -64,19 +81,30 @@ agentctl run "Test prompt"
 ## Project Structure
 
 ```
-agentctl/
-├── agentctl/
-│   ├── cli/          # CLI commands (Click)
-│   ├── server/       # FastAPI server
-│   ├── agent/        # Code that runs on VMs
-│   ├── shared/       # Shared utilities and models
-│   ├── engines/      # AI engine implementations
-│   └── providers/    # Cloud provider implementations
-├── tests/
-│   ├── unit/         # Fast tests, no external deps
-│   └── integration/  # Tests requiring server/GCP
-├── docs/             # Documentation
-└── scripts/          # Deployment and utility scripts
+.
+├── agency_quickdeploy/      # Standalone launcher
+│   ├── cli.py               # CLI commands
+│   ├── launcher.py          # Main orchestration
+│   ├── auth.py              # API key & OAuth
+│   ├── config.py            # Configuration
+│   ├── gcp/                 # GCP integrations
+│   └── tests/               # Unit tests
+├── agentctl/                # Full-featured tool
+│   ├── cli/                 # CLI commands (Click)
+│   ├── server/              # FastAPI server
+│   ├── shared/              # Shared utilities and models
+│   ├── engines/             # AI engine implementations
+│   └── providers/           # Cloud provider implementations
+├── shared/                  # Shared by both tools
+│   └── harness/             # Agent runtime
+│       ├── startup_template.py  # VM startup script
+│       ├── agent_loop.py        # Agent execution logic
+│       └── tests/               # Unit tests
+├── tests/                   # agentctl tests
+│   ├── unit/
+│   └── integration/
+├── docs/                    # Documentation
+└── scripts/                 # Deployment scripts
 ```
 
 ## Making Changes
