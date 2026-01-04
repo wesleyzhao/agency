@@ -6,15 +6,42 @@
 
 ## Overview
 
-AgentCtl lets you spin up isolated cloud VMs running AI coding agents (Claude Code) that work autonomously on tasks you define. Monitor progress via logs, git commits, screenshots, or SSH directly into the machine.
+This repository contains **two complementary tools** for running autonomous AI coding agents on GCP:
 
-**Key Features:**
-- **Simple CLI** - One command to deploy an agent
-- **Git Integration** - Auto-commit and push every 5 minutes
-- **Screenshots** - Periodic captures of agent activity
+### 🚀 agency-quickdeploy (Recommended for Getting Started)
+**Standalone, zero-infrastructure launcher** - One command to launch an agent. No server needed.
+
+```bash
+agency-quickdeploy launch "Build a Python CLI tool with tests"
+```
+
+**Perfect for:**
+- Quick experiments and prototypes
+- Single-agent workflows
+- Getting started without infrastructure setup
+- CI/CD integration
+
+### 🏗️ agentctl (Full-Featured)
+**Enterprise-ready agent orchestration** with centralized master server, SQLite persistence, and multi-agent management.
+
+```bash
+agentctl run "Build a REST API for a todo app"
+```
+
+**Perfect for:**
+- Managing multiple concurrent agents
+- Team collaboration
+- Production deployments
+- Advanced monitoring and control
+
+---
+
+**Both tools:**
+- **Isolated VMs** - Each agent runs in its own cloud VM
 - **SSH Access** - Drop into any agent's terminal
-- **Timeouts** - Auto-stop to control costs
-- **Cost Efficient** - Spot instance support
+- **GCS Integration** - Logs and output synced to Cloud Storage
+- **Cost Efficient** - VMs auto-terminate when done
+- **OAuth & API Key** - Support both Claude subscription and pay-per-token billing
 
 ## Quick Start
 
@@ -23,7 +50,9 @@ AgentCtl lets you spin up isolated cloud VMs running AI coding agents (Claude Co
 - Python 3.11+
 - Google Cloud SDK (`gcloud`)
 - A GCP project with billing enabled
-- Anthropic API key (for Claude Code)
+- **Authentication:** Choose one:
+  - Anthropic API key (pay-per-token) - Get from [console.anthropic.com](https://console.anthropic.com/)
+  - Claude Code OAuth token (subscription) - Generate with `claude setup-token`
 
 ### Installation
 
@@ -31,11 +60,57 @@ AgentCtl lets you spin up isolated cloud VMs running AI coding agents (Claude Co
 # Clone and install
 git clone https://github.com/yourusername/agentctl
 cd agentctl
+pip install -e ".[dev]"
+
+# For agentctl with server support
 pip install -e ".[server,dev]"
 
 # Verify installation
+agency-quickdeploy --help
 agentctl --version
 ```
+
+### Option A: Quick Start with agency-quickdeploy (Easiest)
+
+**No server setup required!** Just configure and launch:
+
+```bash
+# 1. Set up environment
+cp .env.example .env
+# Edit .env and add your QUICKDEPLOY_PROJECT and ANTHROPIC_API_KEY
+
+# 2. Authenticate with GCP
+gcloud auth login
+gcloud auth application-default login
+
+# 3. Launch an agent
+agency-quickdeploy launch "Build a Python calculator CLI with tests"
+
+# 4. Monitor progress
+agency-quickdeploy status <agent-id>
+agency-quickdeploy logs <agent-id>
+
+# 5. Stop when done (or use --no-shutdown to keep VM running)
+agency-quickdeploy stop <agent-id>
+```
+
+**Advanced usage:**
+```bash
+# Use OAuth token instead of API key
+agency-quickdeploy launch "Build an app" --auth-type oauth
+
+# Keep VM running after completion for inspection
+agency-quickdeploy launch "Build an app" --no-shutdown
+
+# List all running agents
+agency-quickdeploy list
+```
+
+See the [agency-quickdeploy documentation](#agency-quickdeploy-reference) below for full details.
+
+---
+
+### Option B: Full Setup with agentctl (Advanced)
 
 ### Setup
 
@@ -225,6 +300,103 @@ screenshot_retention: 24h
 | `AGENTCTL_GCP_REGION` | gcp_region |
 | `AGENTCTL_GCP_ZONE` | gcp_zone |
 
+---
+
+## agency-quickdeploy Reference
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `agency-quickdeploy launch PROMPT [OPTIONS]` | Launch a new agent |
+| `agency-quickdeploy status <ID>` | Get agent status |
+| `agency-quickdeploy logs <ID>` | View agent logs |
+| `agency-quickdeploy stop <ID>` | Stop agent and delete VM |
+| `agency-quickdeploy list` | List all running agents |
+
+### Launch Options
+
+```
+--auth-type [api_key|oauth]   Authentication method (default: api_key)
+--no-shutdown                 Keep VM running after completion
+--name TEXT                   Custom agent name
+```
+
+### Environment Variables
+
+See `.env.example` for all options. Key variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `QUICKDEPLOY_PROJECT` | **Yes** | GCP project ID |
+| `ANTHROPIC_API_KEY` | **Yes*** | API key (if using api_key auth) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | **Yes*** | OAuth token (if using oauth auth) |
+| `QUICKDEPLOY_ZONE` | No | GCP zone (default: us-central1-a) |
+| `QUICKDEPLOY_BUCKET` | No | GCS bucket (auto-generated if not set) |
+| `QUICKDEPLOY_AUTH_TYPE` | No | Auth type: api_key or oauth |
+
+*One of ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN required
+
+### Authentication Methods
+
+**API Key (default):**
+```bash
+# Set in .env
+ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# Launch
+agency-quickdeploy launch "Build something"
+```
+
+**OAuth Token (subscription):**
+```bash
+# Generate token (requires browser)
+claude setup-token
+# Outputs: sk-ant-oat01-...
+
+# Store in Secret Manager
+echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-YOUR-TOKEN"}}' | \
+  gcloud secrets create claude-oauth-credentials --data-file=-
+
+# Or set in .env
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+
+# Launch with OAuth
+agency-quickdeploy launch "Build something" --auth-type oauth
+```
+
+### How It Works
+
+1. **Launch**: Creates GCP VM with startup script
+2. **Initialize**: First agent session creates `feature_list.json` with implementation plan
+3. **Execute**: Subsequent sessions implement features one-by-one
+4. **Sync**: Logs and workspace sync to GCS every 60 seconds
+5. **Complete**: VM auto-terminates (unless `--no-shutdown`)
+
+### Troubleshooting
+
+**Agent stuck on "First session - initializing..."**
+- SSH in: `gcloud compute ssh <agent-id> --zone=us-central1-a`
+- Check logs: `tail -f /var/log/agent.log`
+- Check if `feature_list.json` was created
+
+**Can't SSH into VM**
+```bash
+gcloud compute instances list --filter="name~<agent-id>"
+gcloud compute ssh <agent-id> --zone=us-central1-a --troubleshoot
+```
+
+**No logs appearing**
+Logs sync every 60 seconds. For immediate logs:
+```bash
+gcloud compute ssh <agent-id> --zone=us-central1-a \
+  --command="tail -50 /var/log/agent.log"
+```
+
+See [CLAUDE.md](CLAUDE.md) for complete documentation and [BACKLOG.md](BACKLOG.md) for known issues.
+
+---
+
 ## REST API
 
 The master server exposes a REST API:
@@ -265,11 +437,17 @@ POST /v1/internal/heartbeat     # Agent status updates
 # Install dev dependencies
 pip install -e ".[server,dev]"
 
-# Run all tests
+# Run all tests (135 tests across both tools)
+pytest -v
+
+# Run agency-quickdeploy tests only
+pytest agency_quickdeploy/tests/ shared/harness/tests/ -v
+
+# Run agentctl tests only
 pytest tests/ -v
 
 # Run with coverage
-pytest --cov=agentctl tests/
+pytest --cov=agency_quickdeploy --cov=agentctl --cov=shared tests/ agency_quickdeploy/ shared/
 ```
 
 ### Local Development
@@ -287,18 +465,33 @@ agentctl run --name test "Hello world"
 ## Project Structure
 
 ```
-agentctl/
-├── agentctl/
-│   ├── cli/           # Click commands
-│   ├── server/        # FastAPI + SQLite
-│   │   ├── routes/    # API endpoints
-│   │   └── services/  # GCP services
-│   ├── shared/        # Models, config, API client
-│   └── engines/       # AI engine adapters
-├── tests/
-│   ├── unit/          # Fast, no external deps
-│   └── integration/   # API tests
-└── docs/              # Documentation
+.
+├── agency_quickdeploy/      # Standalone launcher (no server)
+│   ├── cli.py               # CLI commands
+│   ├── launcher.py          # Main orchestration
+│   ├── auth.py              # API key & OAuth handling
+│   ├── config.py            # Configuration
+│   ├── gcp/                 # GCP integrations
+│   │   ├── vm.py            # Compute Engine
+│   │   ├── storage.py       # Cloud Storage
+│   │   └── secrets.py       # Secret Manager
+│   └── tests/               # Unit tests
+├── agentctl/                # Full-featured with server
+│   ├── cli/                 # Click commands
+│   ├── server/              # FastAPI + SQLite
+│   │   ├── routes/          # API endpoints
+│   │   └── services/        # GCP services
+│   ├── shared/              # Models, config, API client
+│   └── engines/             # AI engine adapters
+├── shared/                  # Shared by both tools
+│   └── harness/             # Agent runtime components
+│       ├── startup_template.py  # VM startup script generator
+│       ├── agent_loop.py        # Agent execution logic
+│       └── tests/               # Unit tests
+├── tests/                   # agentctl tests
+│   ├── unit/
+│   └── integration/
+└── docs/                    # Documentation
 ```
 
 ## Roadmap

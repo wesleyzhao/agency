@@ -1,71 +1,122 @@
-# AgentCtl Backlog
+# Agency QuickDeploy Backlog
+
+## Known Issues & Workarounds
+
+### 1. First-File Creation Bug (WORKAROUND IN PLACE)
+**Issue**: `claude-agent-sdk` with `permission_mode='bypassPermissions'` cannot create the FIRST file in a session. Subsequent file creations work fine.
+
+**Symptoms**: Agent outputs "Now let me create feature_list.json..." but no file appears. Loops indefinitely on first session.
+
+**Workaround**: Startup script seeds an empty `feature_list.json` so agent only needs to populate it, not create it.
+
+**Status**: Workaround deployed. Root cause unknown.
+- Tested: 2026-01-04 with OAuth auth
+- Local testing with same SDK version works fine
+- May be OAuth-specific, timing issue, or SDK initialization bug
+
+**TODO**: File issue with Anthropic if this persists across SDK updates.
+
+---
+
+## Recently Completed (2026-01-04)
+
+### OAuth Token Support ✅
+- Use Claude subscription instead of API key billing
+- `--auth-type oauth` flag or `QUICKDEPLOY_AUTH_TYPE=oauth` env var
+- Token from `claude setup-token` stored in Secret Manager or env var
+
+### --no-shutdown Flag ✅
+- Keep VM running after agent completes for inspection
+- SSH in to see what was built
+- Manually stop with `agency-quickdeploy stop <agent-id>`
+
+### .env File Support ✅
+- Load config from `.env` file (no external dependency)
+- Supports `QUICKDEPLOY_PROJECT`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`
+
+### bypassPermissions Mode ✅
+- Agent SDK now uses `permission_mode='bypassPermissions'`
+- Auto-accepts all file operations (required for headless operation)
+
+---
+
+## High Priority Backlog
+
+### 1. --timeout Flag
+Stop Claude after X time, keep VM alive for inspection.
+- Use case: Budget control, prevent runaway agents
+- Implementation: Pass timeout to run_agent.py, kill claude process after N seconds
+
+### 2. Better SSH UX
+Wrapper command for easier SSH access:
+```bash
+agency-quickdeploy ssh <agent-id>
+# instead of
+gcloud compute ssh <agent-id> --zone=us-central1-a --project=my-project
+```
+
+### 3. Real-time Log Streaming
+Stream agent logs in real-time instead of polling GCS:
+- WebSocket or SSE from agent to client
+- Or use Cloud Logging with real-time tailing
+
+### 4. Pre-Baked VM Images (Packer)
+Create base images with dependencies pre-installed:
+- Node.js 18, Claude Code CLI, Python 3.11, gcloud SDK
+- Reduces startup time from 3 mins to ~30 secs
+- Use Packer to build, store in GCE images
+
+---
 
 ## Architecture Improvements (Future)
 
-### 1. Container-Based Multi-Agent Architecture
-Instead of 1 VM per agent (expensive, slow), run multiple agents as Docker containers on a single larger VM.
-- More cost-effective
+### Container-Based Multi-Agent Architecture
+Run multiple agents as Docker containers on a single larger VM:
+- More cost-effective than 1 VM per agent
 - Faster startup (containers vs VMs)
 - Better resource utilization
-- Requires careful isolation with `--dangerously-skip-permissions`
+- Requires careful isolation
 
-### 2. Pre-Baked VM Images (Packer)
-Create base images with Node.js 18, Claude Code, and dependencies pre-installed.
-- Reduces startup time from 3 mins to ~30 secs
-- Fewer moving parts = fewer failures
-- Use Packer to build, Terraform to deploy
-
-### 3. Cloud Run for Master Server
-Deploy master server to Cloud Run instead of local/GCE.
+### Cloud Run for Orchestrator
+Deploy a lightweight orchestrator to Cloud Run:
 - Serverless, auto-scaling
-- No VM management
+- Trigger agent launches via HTTP
 - Cost-effective for variable workloads
 
-### 4. Anthropic Agent SDK Integration
-Integrate with Anthropic's Claude Agent SDK for:
-- Long-running agent patterns
-- Checkpointing and resumable tasks
-- Better error handling
-
-### 5. One-Click Deployment
-Make launching continuous agents extremely easy:
-- `npx agentctl@latest run "prompt"`
-- Web UI with deploy button
-- GitHub Action integration
-
-### 6. Multiple Agents per Instance
-Option to run agents in Docker containers within same instance:
-- Cheaper than separate VMs
-- Shared compute resources
-- Kubernetes or Docker Compose orchestration
+### GitHub Integration
+- Auto-create PRs from agent work
+- GitHub Actions for triggering agents
+- Branch-per-agent workflow
 
 ---
 
 ## Testing Improvements
 
-### Docker-Based Local Testing (HIGH PRIORITY)
-Test startup scripts locally in Docker before deploying to GCP:
+### Docker-Based Local Testing
+Test startup scripts locally before deploying to GCP:
 ```bash
 docker run -it ubuntu:22.04 bash -c "$(cat startup_script.sh)"
 ```
-Benefits:
 - Catches 90% of errors without touching GCP
 - Instant feedback vs 5-10 min cycles
-- Free vs $0.01-0.02 per VM
 
-### Persistent Debug VM
-Keep a "debug mode" VM running without auto-shutdown for SSH debugging.
-
-### Better Log Capture
-- Stream logs in real-time during startup
-- Don't shutdown until logs are persisted to GCS
-- Add explicit checkpoints in startup script
+### Integration Test Suite
+Automated tests that:
+1. Launch agent on GCP
+2. Wait for completion
+3. Verify expected files created
+4. Check feature_list.json updated
+5. Clean up VM
 
 ---
 
-## Current Issues to Fix
+## Documentation TODO
 
-_None - all major issues resolved as of 2026-01-04_
+- [ ] Add troubleshooting guide (common errors, SSH debugging)
+- [ ] Document OAuth token refresh flow
+- [ ] Add architecture diagram
+- [ ] Record demo video
+- [ ] Write "Getting Started in 5 Minutes" guide
 
 ---
 
@@ -80,14 +131,38 @@ _None - all major issues resolved as of 2026-01-04_
 
 ---
 
-## Notes from 2026-01-02 Testing Session
+## Notes for Contributors
 
-### What We Fixed
-- Installed gcloud SDK properly in ~/google-cloud-sdk
-- Created non-root 'agent' user (Claude Code security requirement)
-- Installed Node.js 18 from NodeSource (required for Claude Code)
-- Injected Anthropic API key via VM metadata from Secret Manager
-- Added helper script for prompt handling to avoid quoting issues
+### Running Tests
+```bash
+python -m pytest agency_quickdeploy/ shared/ -v
+```
+
+### Testing a Launch
+```bash
+# Set up .env with your credentials
+echo 'QUICKDEPLOY_PROJECT=your-project' >> .env
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env  # or CLAUDE_CODE_OAUTH_TOKEN
+
+# Launch test agent
+python -m agency_quickdeploy launch "Build a hello world Python CLI" --no-shutdown --name test-agent
+
+# Monitor
+python -m agency_quickdeploy status test-agent
+python -m agency_quickdeploy logs test-agent
+
+# SSH in to inspect
+gcloud compute ssh test-agent --zone=us-central1-a --project=your-project
+
+# Clean up
+python -m agency_quickdeploy stop test-agent
+```
+
+### Key Files
+- `shared/harness/startup_template.py` - VM startup script template
+- `agency_quickdeploy/launcher.py` - Main orchestration logic
+- `agency_quickdeploy/auth.py` - API key and OAuth handling
+- `agency_quickdeploy/cli.py` - CLI commands
 
 ---
 
