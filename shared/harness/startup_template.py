@@ -171,6 +171,17 @@ else
     sudo -u agent git init
 fi
 
+# === Create initial feature_list.json ===
+# Workaround: agent SDK has trouble creating the first file, so we seed it
+if [ ! -f "$WORKDIR/feature_list.json" ]; then
+    log "Creating initial feature_list.json..."
+    sudo -u agent bash -c "cat > $WORKDIR/feature_list.json << 'FEATURE_EOF'
+{
+  \"features\": []
+}
+FEATURE_EOF"
+fi
+
 # === Save Prompt/App Spec ===
 cat > $WORKSPACE/app_spec.txt << 'PROMPT_END'
 __PROMPT__
@@ -214,8 +225,19 @@ def log(msg: str):
 
 
 def is_first_session(project_dir: Path) -> bool:
-    """Check if this is the first session (no progress file yet)."""
-    return not (project_dir / "feature_list.json").exists()
+    """Check if this is the first session (features not yet populated).
+
+    Returns True if feature_list.json doesn't exist or has empty features array.
+    """
+    feature_file = project_dir / "feature_list.json"
+    if not feature_file.exists():
+        return True
+    try:
+        features = json.loads(feature_file.read_text())
+        # If features array is empty, it's still first session
+        return len(features.get("features", [])) == 0
+    except (json.JSONDecodeError, IOError):
+        return True
 
 
 def get_initializer_prompt(app_spec: str) -> str:
@@ -224,7 +246,7 @@ def get_initializer_prompt(app_spec: str) -> str:
 
 ## Your Task
 Read the application specification below and:
-1. Create a feature_list.json file with ALL features needed (be comprehensive)
+1. Read and populate the feature_list.json file with ALL features needed (be comprehensive)
 2. Set up the initial project structure
 3. Create an init.sh script that sets up the development environment
 4. Initialize git and make the first commit
@@ -249,7 +271,7 @@ Create feature_list.json with this structure:
 - You are running autonomously - DO NOT ask for permission, just create the files directly
 - You have FULL permission to create, edit, and delete any files
 
-Start by creating the feature_list.json file immediately - do not ask, just create it."""
+Start by reading feature_list.json and populating it with all required features."""
 
 
 def get_coding_prompt(app_spec: str, progress: str) -> str:
