@@ -108,6 +108,52 @@ agency-quickdeploy logs agent-20260102-abc123
 # SSH into running agent VM
 gcloud compute ssh AGENT_ID --zone=us-central1-a --project=my-project
 
+# Stop an agent
+agency-quickdeploy stop agent-20260102-abc123
+
+# List all running agents
+agency-quickdeploy list
+```
+
+## Known Issues
+
+### First-File Creation Bug
+The `claude-agent-sdk` with `permission_mode='bypassPermissions'` has trouble creating the FIRST file in a session. Subsequent files work fine.
+
+**Workaround**: Startup script seeds an empty `feature_list.json` so the agent populates it rather than creating from scratch. See `BACKLOG.md` for details.
+
+## Troubleshooting
+
+### Agent stuck on "First session - initializing project..."
+This means `feature_list.json` wasn't created. Check:
+1. VM is running: `agency-quickdeploy status <agent-id>`
+2. SSH in and check logs: `tail -f /var/log/agent.log`
+3. Manually create feature_list.json if needed (see BACKLOG.md)
+
+### Can't SSH into VM
+```bash
+# Check if VM is running
+gcloud compute instances list --filter="name~<agent-id>"
+
+# Try with troubleshoot flag
+gcloud compute ssh <agent-id> --zone=us-central1-a --troubleshoot
+```
+
+### No logs appearing
+Logs sync to GCS every 60 seconds. For immediate logs:
+```bash
+gcloud compute ssh <agent-id> --zone=us-central1-a --command="tail -50 /var/log/agent.log"
+```
+
+## For Other Claude Code Agents
+
+When working on this codebase:
+1. Run tests after changes: `python -m pytest agency_quickdeploy/ shared/ -v`
+2. Check `BACKLOG.md` for known issues and planned work
+3. The startup script embeds a Python agent runner - changes there affect all VMs
+4. OAuth and API key paths are separate - test both if changing auth
+
+```bash
 # Agentctl: Requires running master server
 uvicorn agentctl.server.app:app --port 8000
 agentctl run "Build a REST API"

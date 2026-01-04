@@ -172,7 +172,13 @@ else
 fi
 
 # === Create initial feature_list.json ===
-# Workaround: agent SDK has trouble creating the first file, so we seed it
+# TODO(bug): Investigate why claude-agent-sdk with bypassPermissions can't create
+# the FIRST file in a session. Subsequent files work fine. This workaround seeds
+# an empty feature_list.json so the agent only needs to populate it.
+# See: https://github.com/anthropics/claude-code/issues (file issue if persists)
+# Tested: 2026-01-04, claude-agent-sdk version unknown, OAuth auth
+# Workaround follows Anthropic's autonomous-coding pattern where orchestrator
+# creates initial state files.
 if [ ! -f "$WORKDIR/feature_list.json" ]; then
     log "Creating initial feature_list.json..."
     sudo -u agent bash -c "cat > $WORKDIR/feature_list.json << 'FEATURE_EOF'
