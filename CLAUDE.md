@@ -48,12 +48,42 @@ Reusable components for both tools:
 
 **VM metadata for secrets**: API keys passed via GCP instance metadata, not environment variables in startup script.
 
+## Authentication
+
+`agency-quickdeploy` supports two authentication methods:
+
+### API Key (default)
+- Uses `ANTHROPIC_API_KEY` environment variable or Secret Manager
+- Billed per token usage
+- Secret name: `anthropic-api-key`
+
+### OAuth Token (subscription-based)
+- Uses Claude Code subscription instead of per-token billing
+- Generated via `claude setup-token` (requires browser)
+- Secret name: `claude-oauth-credentials`
+
+```bash
+# Generate OAuth token (on machine with browser)
+claude setup-token
+# Outputs: sk-ant-oat01-...
+
+# Store in Secret Manager (as JSON)
+echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-YOUR-TOKEN"}}' | \
+    gcloud secrets create claude-oauth-credentials --data-file=-
+
+# Launch with OAuth
+agency-quickdeploy launch "Build an app" --auth-type oauth
+```
+
 ## Environment Variables
 
 For `agency-quickdeploy`:
 - `QUICKDEPLOY_PROJECT` or `GOOGLE_CLOUD_PROJECT`: GCP project ID (required)
 - `QUICKDEPLOY_ZONE`: GCP zone (default: us-central1-a)
 - `QUICKDEPLOY_BUCKET`: GCS bucket (auto-generated if not set)
+- `QUICKDEPLOY_AUTH_TYPE`: Authentication type (`api_key` or `oauth`)
+- `ANTHROPIC_API_KEY`: API key (for api_key auth)
+- `CLAUDE_CODE_OAUTH_TOKEN`: OAuth token (for oauth auth, alternative to Secret Manager)
 
 For `agentctl`:
 - `AGENTCTL_MASTER_URL`: Master server URL
@@ -62,10 +92,21 @@ For `agentctl`:
 ## Usage Examples
 
 ```bash
-# QuickDeploy: Launch agent without a server
+# QuickDeploy: Launch agent with API key (default)
 QUICKDEPLOY_PROJECT=my-project agency-quickdeploy launch "Build a todo app"
+
+# QuickDeploy: Launch agent with OAuth (subscription billing)
+QUICKDEPLOY_PROJECT=my-project agency-quickdeploy launch "Build a todo app" --auth-type oauth
+
+# Keep VM running after completion (for debugging)
+agency-quickdeploy launch "Build an API" --no-shutdown
+
+# Monitor agent
 agency-quickdeploy status agent-20260102-abc123
 agency-quickdeploy logs agent-20260102-abc123
+
+# SSH into running agent VM
+gcloud compute ssh AGENT_ID --zone=us-central1-a --project=my-project
 
 # Agentctl: Requires running master server
 uvicorn agentctl.server.app:app --port 8000
