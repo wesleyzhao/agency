@@ -82,10 +82,11 @@ uvicorn agentctl.server.app:app --host 0.0.0.0 --port 8000
 For quick testing without the master server:
 
 ```bash
-# Deploy agent and wait for output
+# Deploy agent, wait for output, then cleanup VM
 python scripts/test_gcp_deploy.py \
   --prompt "Create a Python calculator with tests" \
   --wait \
+  --cleanup \
   --output-dir ./my-output
 
 # Deploy with SSH inspection (VM stays running)

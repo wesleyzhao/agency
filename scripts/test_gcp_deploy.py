@@ -28,6 +28,7 @@ def main():
     parser.add_argument("--spot", action="store_true", help="Use spot instance")
     parser.add_argument("--no-shutdown", action="store_true", help="Keep VM running after completion for SSH inspection")
     parser.add_argument("--wait", action="store_true", help="Wait for completion and download output")
+    parser.add_argument("--cleanup", action="store_true", help="Delete VM after completion (requires --wait)")
     parser.add_argument("--output-dir", default="./agent-output", help="Directory to download output to")
     args = parser.parse_args()
 
@@ -167,6 +168,18 @@ def main():
         subprocess.run([
             "gsutil", "cat", f"{gcs_base}/logs/agent.log"
         ])
+
+        # Cleanup VM if requested
+        if args.cleanup:
+            print(f"\n=== Cleaning up VM: {instance_name} ===")
+            if vm.delete_instance(instance_name):
+                print(f"VM {instance_name} deleted successfully")
+            else:
+                print(f"Warning: Could not delete VM {instance_name}")
+        elif not args.no_shutdown:
+            # VM should auto-shutdown, but remind user to check
+            print(f"\nNote: VM should auto-shutdown. If it doesn't, delete manually:")
+            print(f"  gcloud compute instances delete {instance_name} --zone={config.gcp_zone} --project={config.gcp_project} --quiet")
 
 
 if __name__ == "__main__":
