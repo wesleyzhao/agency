@@ -151,10 +151,11 @@ def main():
 
         # Download output
         print(f"\nDownloading output to {args.output_dir}/")
+        os.makedirs(args.output_dir, exist_ok=True)
         subprocess.run([
-            "gsutil", "-m", "cp", "-r",
+            "gsutil", "-m", "rsync", "-r",
             f"{gcs_base}/workspace/",
-            f"{args.output_dir}/"
+            args.output_dir
         ])
 
         # Show what was downloaded
