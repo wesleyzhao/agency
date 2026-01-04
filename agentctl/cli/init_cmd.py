@@ -64,19 +64,28 @@ def init(project, region, zone, service_account, anthropic_key, github_token, bu
     console.print("[green]✓[/green] APIs enabled")
 
     # Step 4: Create GCS bucket
+    from agentctl.server.services.storage_manager import StorageManager
     if bucket:
         bucket_name = bucket
         console.print(f"[green]✓[/green] Using existing bucket: {bucket_name}")
+        storage = StorageManager(bucket_name, project=project)
     else:
         bucket_name = f"agentctl-{project}-{secrets.token_hex(4)}"
         try:
-            from agentctl.server.services.storage_manager import StorageManager
             storage = StorageManager(bucket_name, project=project)
             storage.create_bucket(location=region)
             console.print(f"[green]✓[/green] Created bucket: {bucket_name}")
         except Exception as e:
             console.print(f"[yellow]Warning:[/yellow] Could not create bucket: {e}")
             bucket_name = click.prompt("Enter existing bucket name")
+            storage = StorageManager(bucket_name, project=project)
+
+    # Grant compute service account access to the bucket
+    # This is required for VMs to write logs and progress files
+    if storage.grant_compute_access():
+        console.print("[green]✓[/green] Compute service account granted bucket access")
+    else:
+        console.print("[yellow]Warning:[/yellow] Could not grant compute access. VMs may not be able to write logs.")
 
     # Step 5: Store API keys (optional - can be added later)
     from agentctl.server.services.secret_manager import SecretManagerService

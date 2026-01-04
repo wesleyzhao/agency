@@ -60,12 +60,16 @@ class VMManager:
         metadata.items = items
         instance.metadata = metadata
 
-        # Service account
+        # Service account - always use cloud-platform scope for GCS access
+        # VMs need write access to upload logs and progress files
+        sa = compute_v1.ServiceAccount()
         if service_account:
-            sa = compute_v1.ServiceAccount()
             sa.email = service_account
-            sa.scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-            instance.service_accounts = [sa]
+        else:
+            # Use default compute service account
+            sa.email = "default"
+        sa.scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+        instance.service_accounts = [sa]
 
         # Labels
         instance.labels = labels or {}

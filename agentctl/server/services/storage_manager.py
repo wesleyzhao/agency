@@ -28,6 +28,49 @@ class StorageManager:
         except exceptions.Conflict:
             return False  # Already exists
 
+    def grant_compute_access(self) -> bool:
+        """Grant the default compute service account access to this bucket.
+
+        This is required for VMs to write logs and progress files to GCS.
+        """
+        try:
+            # Get project number from client
+            project_number = self._get_project_number()
+            if not project_number:
+                return False
+
+            service_account = f"{project_number}-compute@developer.gserviceaccount.com"
+
+            # Get current policy
+            bucket = self.client.get_bucket(self.bucket_name)
+            policy = bucket.get_iam_policy(requested_policy_version=3)
+
+            # Add objectCreator and objectViewer roles
+            policy.bindings.append({
+                "role": "roles/storage.objectCreator",
+                "members": {f"serviceAccount:{service_account}"},
+            })
+            policy.bindings.append({
+                "role": "roles/storage.objectViewer",
+                "members": {f"serviceAccount:{service_account}"},
+            })
+
+            bucket.set_iam_policy(policy)
+            return True
+        except Exception:
+            return False
+
+    def _get_project_number(self) -> Optional[str]:
+        """Get the project number from the project ID."""
+        try:
+            from google.cloud import resourcemanager_v3
+            client = resourcemanager_v3.ProjectsClient()
+            project = client.get_project(name=f"projects/{self.project}")
+            # Project name is "projects/PROJECT_NUMBER"
+            return project.name.split("/")[-1]
+        except Exception:
+            return None
+
     def upload_file(self, local_path: Path, remote_path: str) -> str:
         """Upload a file to GCS."""
         blob = self.bucket.blob(remote_path)

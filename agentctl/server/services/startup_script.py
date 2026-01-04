@@ -24,6 +24,16 @@ MASTER_URL="__MASTER_URL__"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/agent.log; }
 
+# Error handler - upload logs on failure
+error_handler() {
+    local exit_code=$?
+    log "ERROR: Script failed with exit code $exit_code"
+    log "Uploading logs before exit..."
+    gsutil cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/startup_error.log 2>&1 || echo "Failed to upload error log"
+    exit $exit_code
+}
+trap error_handler ERR
+
 export HOME=/root
 export DEBIAN_FRONTEND=noninteractive
 
@@ -32,9 +42,13 @@ report_status() {
     local status=$1
     local message=${2:-""}
 
-    # Always write to GCS
+    # Always write to GCS (with verbose output for debugging)
     echo "$status" > /tmp/agent_status
-    gsutil -q cp /tmp/agent_status gs://$BUCKET/agents/$AGENT_ID/status 2>/dev/null || true
+    log "Uploading status '$status' to gs://$BUCKET/agents/$AGENT_ID/status"
+    gsutil cp /tmp/agent_status gs://$BUCKET/agents/$AGENT_ID/status 2>&1 || log "Warning: Failed to upload status"
+
+    # Also upload current log
+    gsutil cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/agent.log 2>&1 || true
 
     # Report to master server if URL is set and reachable
     if [ -n "$MASTER_URL" ] && [ "$MASTER_URL" != "none" ]; then
