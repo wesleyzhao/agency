@@ -31,14 +31,20 @@ def cli():
 @click.option("--spot", is_flag=True, help="Use spot/preemptible instance (cheaper)")
 @click.option("--max-iterations", "-m", type=int, default=0, help="Max iterations (0=unlimited)")
 @click.option("--no-shutdown", is_flag=True, help="Keep VM running after completion (for inspection)")
-def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown):
+@click.option(
+    "--auth-type", "-a",
+    type=click.Choice(["api_key", "oauth"], case_sensitive=False),
+    help="Authentication type: api_key (default) or oauth (subscription-based)"
+)
+def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_type):
     """Launch a new agent with the given PROMPT.
 
     Example:
         agency-quickdeploy launch "Build a todo app with React"
+        agency-quickdeploy launch "Build an API" --auth-type oauth
     """
     try:
-        config = load_config()
+        config = load_config(auth_type_override=auth_type)
     except ConfigError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
         console.print("\nSet QUICKDEPLOY_PROJECT environment variable to your GCP project ID.")
@@ -48,6 +54,7 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown):
     console.print(f"  Project: {config.gcp_project}")
     console.print(f"  Zone: {config.gcp_zone}")
     console.print(f"  Bucket: {config.gcs_bucket}")
+    console.print(f"  Auth: {config.auth_type.value}")
 
     launcher = QuickDeployLauncher(config)
     result = launcher.launch(

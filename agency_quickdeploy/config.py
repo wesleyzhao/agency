@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from agency_quickdeploy.auth import AuthType
+
 
 class ConfigError(Exception):
     """Raised when configuration is invalid or missing."""
@@ -55,13 +57,17 @@ class QuickDeployConfig:
         gcp_region: GCP region (derived from zone)
         gcs_bucket: GCS bucket for state/logs (auto-generated if not set)
         machine_type: GCE machine type for VMs
+        auth_type: Authentication type (api_key or oauth)
         anthropic_api_key_secret: Secret Manager secret name for API key
+        oauth_credentials_secret: Secret Manager secret name for OAuth credentials
     """
 
     gcp_project: str
     gcp_zone: str = "us-central1-a"
     machine_type: str = "e2-medium"
+    auth_type: AuthType = AuthType.API_KEY
     anthropic_api_key_secret: str = "anthropic-api-key"
+    oauth_credentials_secret: str = "claude-oauth-credentials"
     gcs_bucket: Optional[str] = None
 
     @property
@@ -98,7 +104,7 @@ class QuickDeployConfig:
         return errors
 
 
-def load_config() -> QuickDeployConfig:
+def load_config(auth_type_override: Optional[str] = None) -> QuickDeployConfig:
     """Load configuration from environment variables.
 
     Environment variables:
@@ -106,7 +112,11 @@ def load_config() -> QuickDeployConfig:
         QUICKDEPLOY_ZONE: GCP zone (default: us-central1-a)
         QUICKDEPLOY_BUCKET: GCS bucket name (auto-generated if not set)
         QUICKDEPLOY_MACHINE_TYPE: GCE machine type (default: e2-medium)
+        QUICKDEPLOY_AUTH_TYPE: Authentication type (api_key or oauth)
         GOOGLE_CLOUD_PROJECT: Fallback for project if QUICKDEPLOY_PROJECT not set
+
+    Args:
+        auth_type_override: Override auth type from CLI (takes precedence over env)
 
     Returns:
         QuickDeployConfig instance
@@ -127,10 +137,20 @@ def load_config() -> QuickDeployConfig:
     bucket = os.environ.get("QUICKDEPLOY_BUCKET")
     machine_type = os.environ.get("QUICKDEPLOY_MACHINE_TYPE", "e2-medium")
 
+    # Determine auth type: CLI override > env var > default
+    auth_type_str = auth_type_override or os.environ.get("QUICKDEPLOY_AUTH_TYPE", "api_key")
+    try:
+        auth_type = AuthType(auth_type_str.lower())
+    except ValueError:
+        raise ConfigError(
+            f"Invalid auth type: {auth_type_str}. Must be 'api_key' or 'oauth'."
+        )
+
     config = QuickDeployConfig(
         gcp_project=project,
         gcp_zone=zone,
         machine_type=machine_type,
+        auth_type=auth_type,
     )
 
     if bucket:
