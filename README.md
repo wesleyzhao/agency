@@ -58,8 +58,8 @@ agentctl run "Build a REST API for a todo app"
 
 ```bash
 # Clone and install
-git clone https://github.com/yourusername/agentctl
-cd agentctl
+git clone https://github.com/wesleyzhao/agency.git
+cd agency
 pip install -e ".[dev]"
 
 # For agentctl with server support

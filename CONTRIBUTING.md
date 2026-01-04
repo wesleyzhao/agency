@@ -24,8 +24,8 @@ Be respectful, inclusive, and constructive. We're all here to build something us
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/agentctl
-cd agentctl
+git clone https://github.com/wesleyzhao/agency.git
+cd agency
 
 # Create virtual environment
 python -m venv venv
