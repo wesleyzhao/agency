@@ -38,7 +38,7 @@ python -m pytest --cov=agentctl tests/
 
 ## Project Architecture
 
-This repository contains two CLI tools for managing autonomous Claude Code agents on GCP:
+This repository contains two CLI tools for managing autonomous Claude Code agents on GCP or Railway:
 
 ### 1. `agentctl` - Full-featured agent management (requires master server)
 - **CLI** (`agentctl/cli/`): Click commands for run, list, status, stop, ssh, logs, screenshots, tell
@@ -47,7 +47,8 @@ This repository contains two CLI tools for managing autonomous Claude Code agent
 
 ### 2. `agency-quickdeploy` - Standalone one-command launcher (no server needed)
 - **CLI** (`agency_quickdeploy/cli.py`): launch, status, logs, stop, list, init
-- **Launcher** (`agency_quickdeploy/launcher.py`): Orchestrates GCP resources
+- **Launcher** (`agency_quickdeploy/launcher.py`): Orchestrates resources via providers
+- **Providers** (`agency_quickdeploy/providers/`): Abstract provider with GCP and Railway implementations
 - **GCP modules** (`agency_quickdeploy/gcp/`): vm.py, storage.py, secrets.py
 
 ### Shared Harness (`shared/harness/`)
@@ -92,13 +93,19 @@ agency-quickdeploy launch "Build an app" --auth-type oauth
 
 ## Environment Variables
 
-For `agency-quickdeploy`:
-- `QUICKDEPLOY_PROJECT` or `GOOGLE_CLOUD_PROJECT`: GCP project ID (required)
+For `agency-quickdeploy` (GCP provider):
+- `QUICKDEPLOY_PROJECT` or `GOOGLE_CLOUD_PROJECT`: GCP project ID (required for GCP)
 - `QUICKDEPLOY_ZONE`: GCP zone (default: us-central1-a)
 - `QUICKDEPLOY_BUCKET`: GCS bucket (auto-generated if not set)
 - `QUICKDEPLOY_AUTH_TYPE`: Authentication type (`api_key` or `oauth`)
+- `QUICKDEPLOY_PROVIDER`: Deployment provider (`gcp` or `railway`)
 - `ANTHROPIC_API_KEY`: API key (for api_key auth)
 - `CLAUDE_CODE_OAUTH_TOKEN`: OAuth token (for oauth auth, alternative to Secret Manager)
+
+For `agency-quickdeploy` (Railway provider):
+- `RAILWAY_TOKEN`: Railway API token (required for Railway)
+- `RAILWAY_PROJECT_ID`: Railway project ID (optional, auto-created if not set)
+- `RAILWAY_AGENT_IMAGE`: Custom Docker image for agent (optional)
 
 For `agentctl`:
 - `AGENTCTL_MASTER_URL`: Master server URL
@@ -106,11 +113,13 @@ For `agentctl`:
 
 ## Usage Examples
 
+### GCP Provider (default)
+
 ```bash
-# QuickDeploy: Launch agent with API key (default)
+# Launch agent with API key (default)
 QUICKDEPLOY_PROJECT=my-project agency-quickdeploy launch "Build a todo app"
 
-# QuickDeploy: Launch agent with OAuth (subscription billing)
+# Launch agent with OAuth (subscription billing)
 QUICKDEPLOY_PROJECT=my-project agency-quickdeploy launch "Build a todo app" --auth-type oauth
 
 # Keep VM running after completion (for debugging)
@@ -128,6 +137,24 @@ agency-quickdeploy stop agent-20260102-abc123
 
 # List all running agents
 agency-quickdeploy list
+```
+
+### Railway Provider
+
+```bash
+# Launch agent on Railway
+RAILWAY_TOKEN=your-token ANTHROPIC_API_KEY=sk-ant... \
+  agency-quickdeploy launch "Build a todo app" --provider railway
+
+# Monitor agent
+agency-quickdeploy status agent-123 --provider railway
+agency-quickdeploy logs agent-123 --provider railway
+
+# Stop an agent
+agency-quickdeploy stop agent-123 --provider railway
+
+# List all agents on Railway
+agency-quickdeploy list --provider railway
 ```
 
 ## Known Issues

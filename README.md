@@ -1,6 +1,6 @@
 # AgentCtl
 
-> CLI-first system for deploying and managing autonomous AI coding agents on Google Cloud Platform
+> CLI-first system for deploying and managing autonomous AI coding agents on Google Cloud Platform or Railway
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -12,7 +12,11 @@ This repository contains **two complementary tools** for running autonomous AI c
 **Standalone, zero-infrastructure launcher** - One command to launch an agent. No server needed.
 
 ```bash
+# Deploy on GCP (default)
 agency-quickdeploy launch "Build a Python CLI tool with tests"
+
+# Deploy on Railway (container-based)
+agency-quickdeploy launch "Build a Python CLI tool" --provider railway
 ```
 
 **Perfect for:**
@@ -20,6 +24,10 @@ agency-quickdeploy launch "Build a Python CLI tool with tests"
 - Single-agent workflows
 - Getting started without infrastructure setup
 - CI/CD integration
+
+**Supports two deployment providers:**
+- **GCP** (default) - Full-size VMs with SSH access
+- **Railway** - Lightweight containers, faster startup
 
 ### 🏗️ agentctl (Full-Featured)
 **Enterprise-ready agent orchestration** with centralized master server, SQLite persistence, and multi-agent management.
@@ -309,22 +317,30 @@ screenshot_retention: 24h
 | Command | Description |
 |---------|-------------|
 | `agency-quickdeploy launch PROMPT [OPTIONS]` | Launch a new agent |
-| `agency-quickdeploy status <ID>` | Get agent status |
-| `agency-quickdeploy logs <ID>` | View agent logs |
-| `agency-quickdeploy stop <ID>` | Stop agent and delete VM |
-| `agency-quickdeploy list` | List all running agents |
+| `agency-quickdeploy status <ID> [--provider]` | Get agent status |
+| `agency-quickdeploy logs <ID> [--provider]` | View agent logs |
+| `agency-quickdeploy stop <ID> [--provider]` | Stop agent and delete VM/service |
+| `agency-quickdeploy list [--provider]` | List all running agents |
+| `agency-quickdeploy init [--provider]` | Check configuration |
 
 ### Launch Options
 
 ```
+--provider [gcp|railway]      Deployment provider (default: gcp)
 --auth-type [api_key|oauth]   Authentication method (default: api_key)
---no-shutdown                 Keep VM running after completion
+--no-shutdown                 Keep running after completion (GCP only)
 --name TEXT                   Custom agent name
+--repo TEXT                   Git repository to clone
+--branch TEXT                 Git branch to use
+--spot                        Use spot/preemptible instance (GCP only)
+--max-iterations INT          Max agent iterations (0=unlimited)
 ```
 
 ### Environment Variables
 
 See `.env.example` for all options. Key variables:
+
+#### GCP Provider (default)
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -334,6 +350,19 @@ See `.env.example` for all options. Key variables:
 | `QUICKDEPLOY_ZONE` | No | GCP zone (default: us-central1-a) |
 | `QUICKDEPLOY_BUCKET` | No | GCS bucket (auto-generated if not set) |
 | `QUICKDEPLOY_AUTH_TYPE` | No | Auth type: api_key or oauth |
+
+*One of ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN required
+
+#### Railway Provider
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `RAILWAY_TOKEN` | **Yes** | Railway API token (get from [railway.com/account/tokens](https://railway.com/account/tokens)) |
+| `ANTHROPIC_API_KEY` | **Yes*** | API key (if using api_key auth) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | **Yes*** | OAuth token (if using oauth auth) |
+| `RAILWAY_PROJECT_ID` | No | Use existing Railway project (creates new if not set) |
+| `RAILWAY_AGENT_IMAGE` | No | Custom agent Docker image |
+| `QUICKDEPLOY_PROVIDER` | No | Default provider: gcp or railway |
 
 *One of ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN required
 
@@ -354,7 +383,7 @@ agency-quickdeploy launch "Build something"
 claude setup-token
 # Outputs: sk-ant-oat01-...
 
-# Store in Secret Manager
+# Store in Secret Manager (GCP)
 echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-YOUR-TOKEN"}}' | \
   gcloud secrets create claude-oauth-credentials --data-file=-
 
@@ -364,6 +393,35 @@ CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
 # Launch with OAuth
 agency-quickdeploy launch "Build something" --auth-type oauth
 ```
+
+### Railway Quick Start
+
+```bash
+# 1. Get your Railway API token from railway.com/account/tokens
+export RAILWAY_TOKEN=your-railway-token
+
+# 2. Set your Anthropic API key
+export ANTHROPIC_API_KEY=sk-ant-api...
+
+# 3. Launch an agent on Railway
+agency-quickdeploy launch "Build a todo app" --provider railway
+
+# 4. Monitor progress
+agency-quickdeploy status <agent-id> --provider railway
+agency-quickdeploy logs <agent-id> --provider railway
+
+# 5. Stop when done
+agency-quickdeploy stop <agent-id> --provider railway
+```
+
+**Railway vs GCP:**
+| Feature | GCP | Railway |
+|---------|-----|---------|
+| Startup time | ~2-3 min | ~30 sec |
+| SSH access | Yes | No |
+| Persistent storage | GCS | Railway Volumes |
+| Spot instances | Yes | No |
+| Cost model | Per-minute VM | Per-usage container |
 
 ### How It Works
 
@@ -471,7 +529,11 @@ agentctl run --name test "Hello world"
 │   ├── launcher.py          # Main orchestration
 │   ├── auth.py              # API key & OAuth handling
 │   ├── config.py            # Configuration
-│   ├── gcp/                 # GCP integrations
+│   ├── providers/           # Deployment providers
+│   │   ├── base.py          # Abstract base provider
+│   │   ├── gcp.py           # GCP Compute Engine provider
+│   │   └── railway.py       # Railway container provider
+│   ├── gcp/                 # GCP-specific integrations
 │   │   ├── vm.py            # Compute Engine
 │   │   ├── storage.py       # Cloud Storage
 │   │   └── secrets.py       # Secret Manager
@@ -504,11 +566,11 @@ agentctl run --name test "Hello world"
 - [x] Workspace sync to GCS
 - [x] Output download after completion
 - [x] SSH inspection mode (--no-shutdown)
+- [x] **Railway provider (container-based deployment)**
 - [ ] Web UI dashboard
 - [ ] Cost tracking
 - [ ] Multi-user support
 - [ ] Pre-baked VM images (faster startup)
-- [ ] Container-based agents (cheaper)
 
 ## License
 
