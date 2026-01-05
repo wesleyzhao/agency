@@ -23,6 +23,56 @@ from agency_quickdeploy.auth import Credentials
 # Railway API endpoint
 RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2"
 
+
+class RailwayError(Exception):
+    """Railway-specific error with actionable messages.
+
+    Use factory methods to create errors with consistent, helpful messages
+    that guide users toward resolution.
+    """
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+    @classmethod
+    def invalid_token(cls) -> "RailwayError":
+        """Create error for invalid/expired token."""
+        return cls(
+            "Invalid Railway token. "
+            "Get a new token at railway.com/account/tokens and set RAILWAY_TOKEN environment variable."
+        )
+
+    @classmethod
+    def rate_limited(cls) -> "RailwayError":
+        """Create error for rate limit exceeded."""
+        return cls(
+            "Railway API rate limit exceeded. "
+            "Wait a few minutes and retry your request."
+        )
+
+    @classmethod
+    def project_not_found(cls, project_id: str) -> "RailwayError":
+        """Create error for project not found."""
+        return cls(
+            f"Railway project '{project_id}' not found. "
+            "Check RAILWAY_PROJECT_ID or let agency-quickdeploy create a new project automatically."
+        )
+
+    @classmethod
+    def service_not_found(cls, agent_id: str) -> "RailwayError":
+        """Create error for service/agent not found."""
+        return cls(
+            f"Agent '{agent_id}' not found. "
+            "Run 'agency-quickdeploy list --provider railway' to see available agents."
+        )
+
+    @classmethod
+    def api_error(cls, message: str, suggestion: str) -> "RailwayError":
+        """Create error with custom message and suggestion."""
+        return cls(f"{message}. {suggestion}")
+
+
 # UUID pattern for Railway tokens
 UUID_PATTERN = re.compile(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',

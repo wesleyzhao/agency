@@ -505,3 +505,65 @@ class TestRailwayTokenValidation:
         assert success is False
         assert error is not None
         assert "network" in error.lower() or "connection" in error.lower()
+
+
+class TestRailwayError:
+    """Tests for RailwayError class with actionable messages (TDD - Phase 1.2)."""
+
+    def test_invalid_token_error_has_actionable_message(self):
+        """invalid_token() should include link to get new token."""
+        from agency_quickdeploy.providers.railway import RailwayError
+
+        error = RailwayError.invalid_token()
+
+        assert "railway.com/account/tokens" in str(error)
+        assert "RAILWAY_TOKEN" in str(error)
+
+    def test_rate_limited_error_suggests_retry(self):
+        """rate_limited() should suggest waiting and retrying."""
+        from agency_quickdeploy.providers.railway import RailwayError
+
+        error = RailwayError.rate_limited()
+
+        assert "rate limit" in str(error).lower()
+        assert "retry" in str(error).lower() or "wait" in str(error).lower()
+
+    def test_project_not_found_includes_project_id(self):
+        """project_not_found() should include the project ID."""
+        from agency_quickdeploy.providers.railway import RailwayError
+
+        error = RailwayError.project_not_found("proj-12345")
+
+        assert "proj-12345" in str(error)
+        assert "project" in str(error).lower()
+
+    def test_service_not_found_includes_agent_id(self):
+        """service_not_found() should include the agent ID."""
+        from agency_quickdeploy.providers.railway import RailwayError
+
+        error = RailwayError.service_not_found("agent-20260105-abc123")
+
+        assert "agent-20260105-abc123" in str(error)
+        assert "list" in str(error).lower() or "agents" in str(error).lower()
+
+    def test_api_error_includes_suggestion(self):
+        """api_error() should include custom message and suggestion."""
+        from agency_quickdeploy.providers.railway import RailwayError
+
+        error = RailwayError.api_error("Query failed", "Check your project ID")
+
+        assert "Query failed" in str(error)
+        assert "Check your project ID" in str(error)
+
+    def test_error_is_exception(self):
+        """RailwayError should be a proper Exception subclass."""
+        from agency_quickdeploy.providers.railway import RailwayError
+
+        error = RailwayError.invalid_token()
+
+        assert isinstance(error, Exception)
+        # Should be raisable
+        try:
+            raise error
+        except RailwayError as e:
+            assert "token" in str(e).lower()
