@@ -1,0 +1,11 @@
+# Agency-QuickDeploy Railway Agent Runner
+# These dependencies are installed when Railway builds from this repo
+
+# Claude Agent SDK for running autonomous agents
+claude-agent-sdk>=0.1.0
+
+# Anthropic SDK for API access
+anthropic>=0.40.0
+
+# HTTP requests for potential webhook notifications
+requests>=2.31.0

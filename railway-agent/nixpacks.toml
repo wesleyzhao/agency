@@ -1,0 +1,21 @@
+# Railway Nixpacks configuration for agent runner
+# Nixpacks auto-detects Python and Node.js requirements
+
+[phases.setup]
+# Install both Python and Node.js (needed for claude-code CLI)
+nixPkgs = ["python311", "nodejs-18_x", "git"]
+
+[phases.install]
+# Install Python dependencies and claude-code CLI
+cmds = [
+    "pip install -r requirements.txt",
+    "npm install -g @anthropic-ai/claude-code"
+]
+
+[start]
+# Run the agent runner
+cmd = "python main.py"
+
+[variables]
+# Default environment variables (can be overridden in Railway dashboard)
+PYTHONUNBUFFERED = "1"
