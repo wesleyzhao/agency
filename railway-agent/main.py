@@ -180,7 +180,7 @@ Work autonomously - do not ask for confirmation."""
 
 async def run_session(workspace: Path, prompt: str) -> None:
     """Run a single Claude Code session."""
-    from claude_code_sdk import query
+    from claude_agent_sdk import query
 
     log(f"Starting session in {workspace}")
     log(f"Prompt: {prompt[:100]}...")

@@ -593,11 +593,13 @@ class TestRailwayRepoDeployment:
         assert "my-agent-repo" in str(request_body) or "myuser" in str(request_body)
 
     def test_agent_repo_url_constant_exists(self):
-        """AGENT_REPO_URL constant should be defined."""
+        """AGENT_REPO_URL constant should be in owner/repo format."""
         from agency_quickdeploy.providers.railway import AGENT_REPO_URL
 
         assert AGENT_REPO_URL is not None
-        assert "github.com" in AGENT_REPO_URL or "github" in AGENT_REPO_URL.lower()
+        # Should be in "owner/repo" format (e.g., "wesleyzhao/agency")
+        assert "/" in AGENT_REPO_URL
+        assert len(AGENT_REPO_URL.split("/")) == 2
 
 
 class TestRailwayServiceDiscovery:

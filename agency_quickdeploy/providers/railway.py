@@ -141,20 +141,19 @@ def validate_railway_token_api(token: str) -> Tuple[bool, Optional[str]]:
 
 
 # Default GitHub repo containing the agent runner code
-# Railway clones this repo and builds from the railway-agent/ subdirectory
+# Railway clones this repo and uses railway.toml at root for build config
+# The agent code lives in railway-agent/ subdirectory
 # Users can override via RAILWAY_AGENT_REPO environment variable
-AGENT_REPO_URL = "https://github.com/wesleyzhao/agency"
-
-# Root directory in the repo containing the agent runner
-AGENT_ROOT_DIRECTORY = "railway-agent"
+AGENT_REPO_URL = "wesleyzhao/agency"
 
 
 class RailwayProvider(BaseProvider):
     """Railway provider using GitHub repo deployment.
 
     This provider deploys Claude agents as Railway services by
-    cloning a GitHub repository containing the agent runner code.
-    Railway uses Nixpacks to auto-detect and build the project.
+    cloning a GitHub repository. The repo must have:
+    - railway.toml at root with build/start commands
+    - railway-agent/ subdirectory with the agent code
     """
 
     API_URL = "https://backboard.railway.com/graphql/v2"
@@ -349,16 +348,16 @@ class RailwayProvider(BaseProvider):
                 cred_vars = credentials.get_env_vars()
                 env_vars.update(cred_vars)
 
-            # Get agent runner repo from environment or use default
+            # Get agent runner repo - format: "owner/repo" (e.g., "wesleyzhao/agency")
             agent_repo = os.environ.get("RAILWAY_AGENT_REPO", AGENT_REPO_URL)
 
             # Create service from GitHub repo
+            # Try simple format first - Railway may auto-detect from nixpacks.toml
             service_input = {
                 "name": agent_id,
                 "projectId": project_id,
                 "source": {"repo": agent_repo},
                 "variables": env_vars,
-                "rootDirectory": AGENT_ROOT_DIRECTORY,
             }
 
             if self._environment_id:
