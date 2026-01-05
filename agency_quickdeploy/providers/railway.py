@@ -10,6 +10,7 @@ Railway API Reference:
 """
 
 import json
+import os
 import re
 from typing import Optional, Any, Tuple
 
@@ -139,17 +140,21 @@ def validate_railway_token_api(token: str) -> Tuple[bool, Optional[str]]:
         return False, f"Unexpected error: {e}"
 
 
-# Default Docker image for Claude agent
-# This image should contain: Node.js, Python, claude-code CLI, claude-agent-sdk
-# Users can override via environment variable RAILWAY_AGENT_IMAGE
-DEFAULT_AGENT_IMAGE = "ghcr.io/anthropics/agency-quickdeploy-agent:latest"
+# Default GitHub repo containing the agent runner code
+# Railway clones this repo and builds from the railway-agent/ subdirectory
+# Users can override via RAILWAY_AGENT_REPO environment variable
+AGENT_REPO_URL = "https://github.com/wesleyzhao/agency"
+
+# Root directory in the repo containing the agent runner
+AGENT_ROOT_DIRECTORY = "railway-agent"
 
 
 class RailwayProvider(BaseProvider):
-    """Railway provider using containerized services.
+    """Railway provider using GitHub repo deployment.
 
-    This provider deploys Claude agents as Railway services using
-    a pre-built Docker image that runs the agent loop.
+    This provider deploys Claude agents as Railway services by
+    cloning a GitHub repository containing the agent runner code.
+    Railway uses Nixpacks to auto-detect and build the project.
     """
 
     API_URL = "https://backboard.railway.com/graphql/v2"
@@ -271,7 +276,7 @@ class RailwayProvider(BaseProvider):
     ) -> DeploymentResult:
         """Launch an agent on Railway.
 
-        Creates a new Railway service from a Docker image and starts
+        Creates a new Railway service from a GitHub repository and starts
         the deployment with the agent configuration.
 
         Args:
@@ -295,7 +300,7 @@ class RailwayProvider(BaseProvider):
                 "NO_SHUTDOWN": "true" if kwargs.get("no_shutdown") else "false",
             }
 
-            # Add repo/branch if provided
+            # Add repo/branch if provided (for the agent to clone, not the agent runner repo)
             if kwargs.get("repo"):
                 env_vars["REPO_URL"] = kwargs["repo"]
             if kwargs.get("branch"):
@@ -306,16 +311,16 @@ class RailwayProvider(BaseProvider):
                 cred_vars = credentials.get_env_vars()
                 env_vars.update(cred_vars)
 
-            # Get agent image from environment or use default
-            import os
-            agent_image = os.environ.get("RAILWAY_AGENT_IMAGE", DEFAULT_AGENT_IMAGE)
+            # Get agent runner repo from environment or use default
+            agent_repo = os.environ.get("RAILWAY_AGENT_REPO", AGENT_REPO_URL)
 
-            # Create service with Docker image
+            # Create service from GitHub repo
             service_input = {
                 "name": agent_id,
                 "projectId": project_id,
-                "source": {"image": agent_image},
+                "source": {"repo": agent_repo},
                 "variables": env_vars,
+                "rootDirectory": AGENT_ROOT_DIRECTORY,
             }
 
             if self._environment_id:

@@ -4,6 +4,7 @@ These tests verify the RailwayProvider class implements the BaseProvider
 interface correctly and interacts with Railway's GraphQL API as expected.
 """
 
+import os
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import json
@@ -505,6 +506,98 @@ class TestRailwayTokenValidation:
         assert success is False
         assert error is not None
         assert "network" in error.lower() or "connection" in error.lower()
+
+
+class TestRailwayRepoDeployment:
+    """Tests for GitHub repo-based deployment (TDD - Phase 2.2)."""
+
+    @patch("agency_quickdeploy.providers.railway.requests")
+    def test_launch_uses_repo_source_not_image(self, mock_requests):
+        """Launch should use source.repo instead of source.image."""
+        from agency_quickdeploy.providers.railway import RailwayProvider, AGENT_REPO_URL
+        from agency_quickdeploy.config import QuickDeployConfig
+        from agency_quickdeploy.providers.base import ProviderType
+        from agency_quickdeploy.auth import Credentials
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "data": {
+                "serviceCreate": {
+                    "id": "service-123",
+                    "name": "agent-test",
+                }
+            }
+        }
+        mock_response.raise_for_status = Mock()
+        mock_requests.post.return_value = mock_response
+
+        config = QuickDeployConfig(
+            provider=ProviderType.RAILWAY,
+            railway_token="test-token",
+            railway_project_id="project-123",
+        )
+        provider = RailwayProvider(config)
+        credentials = Credentials.from_api_key("sk-ant-test")
+
+        provider.launch(
+            agent_id="agent-test",
+            prompt="Build a todo app",
+            credentials=credentials,
+        )
+
+        # Verify the GraphQL mutation was called
+        call_args = mock_requests.post.call_args
+        request_body = call_args[1]["json"]
+
+        # Should use repo source
+        assert "repo" in str(request_body).lower() or AGENT_REPO_URL in str(request_body)
+
+    @patch("agency_quickdeploy.providers.railway.requests")
+    @patch.dict(os.environ, {"RAILWAY_AGENT_REPO": "https://github.com/myuser/my-agent-repo"})
+    def test_launch_respects_custom_repo_env_var(self, mock_requests):
+        """Launch should use RAILWAY_AGENT_REPO env var if set."""
+        from agency_quickdeploy.providers.railway import RailwayProvider
+        from agency_quickdeploy.config import QuickDeployConfig
+        from agency_quickdeploy.providers.base import ProviderType
+        from agency_quickdeploy.auth import Credentials
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "data": {
+                "serviceCreate": {
+                    "id": "service-123",
+                    "name": "agent-test",
+                }
+            }
+        }
+        mock_response.raise_for_status = Mock()
+        mock_requests.post.return_value = mock_response
+
+        config = QuickDeployConfig(
+            provider=ProviderType.RAILWAY,
+            railway_token="test-token",
+            railway_project_id="project-123",
+        )
+        provider = RailwayProvider(config)
+        credentials = Credentials.from_api_key("sk-ant-test")
+
+        provider.launch(
+            agent_id="agent-test",
+            prompt="Build a todo app",
+            credentials=credentials,
+        )
+
+        # Verify custom repo was used
+        call_args = mock_requests.post.call_args
+        request_body = call_args[1]["json"]
+        assert "my-agent-repo" in str(request_body) or "myuser" in str(request_body)
+
+    def test_agent_repo_url_constant_exists(self):
+        """AGENT_REPO_URL constant should be defined."""
+        from agency_quickdeploy.providers.railway import AGENT_REPO_URL
+
+        assert AGENT_REPO_URL is not None
+        assert "github.com" in AGENT_REPO_URL or "github" in AGENT_REPO_URL.lower()
 
 
 class TestRailwayError:
