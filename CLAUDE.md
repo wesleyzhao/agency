@@ -103,9 +103,9 @@ For `agency-quickdeploy` (GCP provider):
 - `CLAUDE_CODE_OAUTH_TOKEN`: OAuth token (for oauth auth, alternative to Secret Manager)
 
 For `agency-quickdeploy` (Railway provider):
-- `RAILWAY_TOKEN`: Railway API token (required for Railway)
+- `RAILWAY_TOKEN`: Railway API token (required, UUID format)
 - `RAILWAY_PROJECT_ID`: Railway project ID (optional, auto-created if not set)
-- `RAILWAY_AGENT_IMAGE`: Custom Docker image for agent (optional)
+- `RAILWAY_AGENT_REPO`: Custom agent runner repo (optional, default: this repo)
 
 For `agentctl`:
 - `AGENTCTL_MASTER_URL`: Master server URL

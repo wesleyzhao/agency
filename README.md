@@ -361,7 +361,7 @@ See `.env.example` for all options. Key variables:
 | `ANTHROPIC_API_KEY` | **Yes*** | API key (if using api_key auth) |
 | `CLAUDE_CODE_OAUTH_TOKEN` | **Yes*** | OAuth token (if using oauth auth) |
 | `RAILWAY_PROJECT_ID` | No | Use existing Railway project (creates new if not set) |
-| `RAILWAY_AGENT_IMAGE` | No | Custom agent Docker image |
+| `RAILWAY_AGENT_REPO` | No | Custom agent runner repo (default: this repo) |
 | `QUICKDEPLOY_PROVIDER` | No | Default provider: gcp or railway |
 
 *One of ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN required
@@ -398,21 +398,30 @@ agency-quickdeploy launch "Build something" --auth-type oauth
 
 ```bash
 # 1. Get your Railway API token from railway.com/account/tokens
-export RAILWAY_TOKEN=your-railway-token
+export RAILWAY_TOKEN=your-railway-token   # Must be UUID format
 
 # 2. Set your Anthropic API key
 export ANTHROPIC_API_KEY=sk-ant-api...
 
-# 3. Launch an agent on Railway
+# 3. Verify configuration (validates token & tests connectivity)
+agency-quickdeploy init --provider railway
+
+# 4. Launch an agent on Railway
 agency-quickdeploy launch "Build a todo app" --provider railway
 
-# 4. Monitor progress
+# 5. Monitor progress
 agency-quickdeploy status <agent-id> --provider railway
 agency-quickdeploy logs <agent-id> --provider railway
 
-# 5. Stop when done
+# 6. Stop when done
 agency-quickdeploy stop <agent-id> --provider railway
 ```
+
+**How Railway deployment works:**
+- Railway clones this repo and builds from `railway-agent/` directory
+- Uses Nixpacks to auto-detect and install Python + Node.js
+- Agent runner starts and processes your prompt
+- No Docker needed - pure GitHub repo deployment
 
 **Railway vs GCP:**
 | Feature | GCP | Railway |
