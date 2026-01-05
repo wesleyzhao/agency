@@ -249,9 +249,16 @@ class RailwayProvider(BaseProvider):
     def _ensure_project(self) -> str:
         """Ensure a Railway project exists, creating one if needed.
 
+        First tries to discover an existing 'agency-quickdeploy' project,
+        then creates one only if none exists.
+
         Returns:
             Project ID
         """
+        # If project_id not configured, try to find existing project first
+        if not self.project_id:
+            self._discover_project_id()
+
         if self.project_id:
             # Fetch environment ID for existing project
             if not self._environment_id:
@@ -279,7 +286,7 @@ class RailwayProvider(BaseProvider):
                         self._environment_id = envs[0]["node"]["id"]
             return self.project_id
 
-        # Create a new project
+        # No existing project found, create a new one
         result = self._graphql(
             """
             mutation projectCreate($input: ProjectCreateInput!) {

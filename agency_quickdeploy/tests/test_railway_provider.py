@@ -376,14 +376,21 @@ class TestRailwayProviderProjectManagement:
 
     @patch("agency_quickdeploy.providers.railway.requests")
     def test_creates_project_if_not_configured(self, mock_requests):
-        """Should create a Railway project if none is configured."""
+        """Should create a Railway project if none exists."""
         from agency_quickdeploy.providers.railway import RailwayProvider
         from agency_quickdeploy.config import QuickDeployConfig
         from agency_quickdeploy.providers.base import ProviderType
         from agency_quickdeploy.auth import Credentials
 
-        # First call creates project, second creates service
+        # First call: discover projects (empty), second: create project, third: create service
         mock_responses = [
+            # Discovery call - no existing projects
+            Mock(json=lambda: {
+                "data": {
+                    "projects": {"edges": []}
+                }
+            }),
+            # Create project call
             Mock(json=lambda: {
                 "data": {
                     "projectCreate": {
@@ -395,6 +402,7 @@ class TestRailwayProviderProjectManagement:
                     }
                 }
             }),
+            # Create service call
             Mock(json=lambda: {
                 "data": {
                     "serviceCreate": {
@@ -411,7 +419,7 @@ class TestRailwayProviderProjectManagement:
         config = QuickDeployConfig(
             provider=ProviderType.RAILWAY,
             railway_token="test-token",
-            # No project_id - should create one
+            # No project_id - should discover or create one
         )
         provider = RailwayProvider(config)
         credentials = Credentials.from_api_key("sk-test-key")
@@ -423,8 +431,8 @@ class TestRailwayProviderProjectManagement:
         )
 
         assert result.status == "launching"
-        # Should have called API twice (create project + create service)
-        assert mock_requests.post.call_count >= 1
+        # Should have called API three times (discover + create project + create service)
+        assert mock_requests.post.call_count >= 2
 
 
 class TestRailwayTokenValidation:
