@@ -99,14 +99,20 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
 
 @cli.command()
 @click.argument("agent_id")
-def status(agent_id):
+@click.option(
+    "--provider", "-p",
+    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    help="Deployment provider to query"
+)
+def status(agent_id, provider):
     """Get status of an agent.
 
     Example:
         agency-quickdeploy status agent-20260102-abc123
+        agency-quickdeploy status agent-123 --provider railway
     """
     try:
-        config = load_config()
+        config = load_config(provider_override=provider)
     except ConfigError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
         raise SystemExit(1)
@@ -115,14 +121,27 @@ def status(agent_id):
     agent_status = launcher.status(agent_id)
 
     console.print(f"\n[cyan]Agent Status: {agent_id}[/cyan]")
+    console.print(f"  Provider: {config.provider.value}")
     console.print(f"  Status: {agent_status.get('status', 'unknown')}")
 
+    # GCP-specific info
     if agent_status.get("vm_status"):
         console.print(f"  VM Status: {agent_status['vm_status']}")
 
     if agent_status.get("external_ip"):
         console.print(f"  External IP: {agent_status['external_ip']}")
 
+    # Railway-specific info
+    if agent_status.get("railway_status"):
+        console.print(f"  Railway Status: {agent_status['railway_status']}")
+
+    if agent_status.get("url"):
+        console.print(f"  URL: {agent_status['url']}")
+
+    if agent_status.get("deployment_id"):
+        console.print(f"  Deployment ID: {agent_status['deployment_id']}")
+
+    # Progress info (GCP)
     if agent_status.get("feature_count"):
         completed = agent_status.get("features_completed", 0)
         total = agent_status["feature_count"]
@@ -132,14 +151,20 @@ def status(agent_id):
 @cli.command()
 @click.argument("agent_id")
 @click.option("--follow", "-f", is_flag=True, help="Follow log output (not implemented)")
-def logs(agent_id, follow):
+@click.option(
+    "--provider", "-p",
+    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    help="Deployment provider to query"
+)
+def logs(agent_id, follow, provider):
     """Get logs for an agent.
 
     Example:
         agency-quickdeploy logs agent-20260102-abc123
+        agency-quickdeploy logs agent-123 --provider railway
     """
     try:
-        config = load_config()
+        config = load_config(provider_override=provider)
     except ConfigError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
         raise SystemExit(1)
@@ -155,15 +180,21 @@ def logs(agent_id, follow):
 
 @cli.command()
 @click.argument("agent_id")
+@click.option(
+    "--provider", "-p",
+    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    help="Deployment provider"
+)
 @click.confirmation_option(prompt="Are you sure you want to stop this agent?")
-def stop(agent_id):
+def stop(agent_id, provider):
     """Stop and delete an agent.
 
     Example:
         agency-quickdeploy stop agent-20260102-abc123
+        agency-quickdeploy stop agent-123 --provider railway
     """
     try:
-        config = load_config()
+        config = load_config(provider_override=provider)
     except ConfigError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
         raise SystemExit(1)
@@ -179,14 +210,20 @@ def stop(agent_id):
 
 
 @cli.command("list")
-def list_agents():
+@click.option(
+    "--provider", "-p",
+    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    help="Deployment provider to list"
+)
+def list_agents(provider):
     """List all quickdeploy agents.
 
     Example:
         agency-quickdeploy list
+        agency-quickdeploy list --provider railway
     """
     try:
-        config = load_config()
+        config = load_config(provider_override=provider)
     except ConfigError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
         raise SystemExit(1)
@@ -195,57 +232,89 @@ def list_agents():
     agents = launcher.list_agents()
 
     if not agents:
-        console.print("[yellow]No agents found[/yellow]")
+        console.print(f"[yellow]No agents found ({config.provider.value})[/yellow]")
         return
 
-    table = Table(title="QuickDeploy Agents")
+    table = Table(title=f"QuickDeploy Agents ({config.provider.value})")
     table.add_column("Name", style="cyan")
     table.add_column("Status", style="green")
-    table.add_column("External IP")
 
-    for agent in agents:
-        table.add_row(
-            agent.get("name", ""),
-            agent.get("status", ""),
-            agent.get("external_ip", ""),
-        )
+    # Show URL for Railway, External IP for GCP
+    if config.provider.value == "railway":
+        table.add_column("URL")
+        for agent in agents:
+            table.add_row(
+                agent.get("name", ""),
+                agent.get("status", ""),
+                agent.get("url", ""),
+            )
+    else:
+        table.add_column("External IP")
+        for agent in agents:
+            table.add_row(
+                agent.get("name", ""),
+                agent.get("status", ""),
+                agent.get("external_ip", ""),
+            )
 
     console.print(table)
 
 
 @cli.command()
-def init():
+@click.option(
+    "--provider", "-p",
+    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    help="Check configuration for specific provider"
+)
+def init(provider):
     """Initialize quickdeploy (check configuration).
 
     Example:
         agency-quickdeploy init
+        agency-quickdeploy init --provider railway
     """
     console.print("[cyan]Checking configuration...[/cyan]")
 
     try:
-        config = load_config()
+        config = load_config(provider_override=provider)
         console.print(f"[green]Configuration valid![/green]")
-        console.print(f"  Project: {config.gcp_project}")
-        console.print(f"  Zone: {config.gcp_zone}")
-        console.print(f"  Bucket: {config.gcs_bucket}")
+        console.print(f"  Provider: {config.provider.value}")
 
-        # Check if API key exists
-        from agency_quickdeploy.gcp.secrets import SecretManager
-        secrets = SecretManager(config.gcp_project)
+        if config.provider.value == "gcp":
+            console.print(f"  Project: {config.gcp_project}")
+            console.print(f"  Zone: {config.gcp_zone}")
+            console.print(f"  Bucket: {config.gcs_bucket}")
 
-        if secrets.exists(config.anthropic_api_key_secret):
-            console.print(f"[green]API key found in Secret Manager[/green]")
+            # Check if API key exists in Secret Manager
+            from agency_quickdeploy.gcp.secrets import SecretManager
+            secrets = SecretManager(config.gcp_project)
+
+            if secrets.exists(config.anthropic_api_key_secret):
+                console.print(f"[green]API key found in Secret Manager[/green]")
+            else:
+                console.print(f"[yellow]Warning: API key not found in Secret Manager[/yellow]")
+                console.print(f"  Create it with: gcloud secrets create {config.anthropic_api_key_secret} --data-file=<file>")
         else:
-            console.print(f"[yellow]Warning: API key not found in Secret Manager[/yellow]")
-            console.print(f"  Create it with: gcloud secrets create {config.anthropic_api_key_secret} --data-file=<file>")
+            # Railway
+            console.print(f"  Token: {'set' if config.railway_token else 'not set'}")
+            console.print(f"  Project ID: {config.railway_project_id or 'auto-create'}")
+            console.print("\n[cyan]Note:[/cyan] Railway requires a Docker image for the agent.")
+            console.print("  Default image: ghcr.io/anthropics/agency-quickdeploy-agent:latest")
+            console.print("  Override with: RAILWAY_AGENT_IMAGE env var")
 
     except ConfigError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
-        console.print("\nRequired environment variables:")
-        console.print("  QUICKDEPLOY_PROJECT - GCP project ID")
-        console.print("\nOptional environment variables:")
-        console.print("  QUICKDEPLOY_ZONE - GCP zone (default: us-central1-a)")
-        console.print("  QUICKDEPLOY_BUCKET - GCS bucket (auto-generated if not set)")
+        if provider == "railway":
+            console.print("\nRequired for Railway:")
+            console.print("  RAILWAY_TOKEN - Railway API token (get from railway.com/account/tokens)")
+            console.print("\nOptional:")
+            console.print("  RAILWAY_PROJECT_ID - Use existing project (creates new if not set)")
+        else:
+            console.print("\nRequired for GCP:")
+            console.print("  QUICKDEPLOY_PROJECT - GCP project ID")
+            console.print("\nOptional:")
+            console.print("  QUICKDEPLOY_ZONE - GCP zone (default: us-central1-a)")
+            console.print("  QUICKDEPLOY_BUCKET - GCS bucket (auto-generated if not set)")
         raise SystemExit(1)
 
 
