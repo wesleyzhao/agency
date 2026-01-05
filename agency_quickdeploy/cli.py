@@ -295,12 +295,37 @@ def init(provider):
                 console.print(f"[yellow]Warning: API key not found in Secret Manager[/yellow]")
                 console.print(f"  Create it with: gcloud secrets create {config.anthropic_api_key_secret} --data-file=<file>")
         else:
-            # Railway
+            # Railway - validate token and test connectivity
+            from agency_quickdeploy.providers.railway import (
+                validate_railway_token_format,
+                validate_railway_token_api,
+            )
+
             console.print(f"  Token: {'set' if config.railway_token else 'not set'}")
             console.print(f"  Project ID: {config.railway_project_id or 'auto-create'}")
-            console.print("\n[cyan]Note:[/cyan] Railway requires a Docker image for the agent.")
-            console.print("  Default image: ghcr.io/anthropics/agency-quickdeploy-agent:latest")
-            console.print("  Override with: RAILWAY_AGENT_IMAGE env var")
+
+            # Validate token format
+            if not validate_railway_token_format(config.railway_token):
+                console.print(f"\n[red]Token format invalid![/red]")
+                console.print("  Railway tokens should be UUIDs (e.g., 3fca9fef-8953-486f-b772-af5f34417ef7)")
+                console.print("  Get a valid token at: railway.com/account/tokens")
+                raise SystemExit(1)
+
+            console.print(f"  Token format: [green]valid[/green]")
+
+            # Test API connectivity
+            console.print("\n[cyan]Testing API connectivity...[/cyan]")
+            success, error = validate_railway_token_api(config.railway_token)
+
+            if not success:
+                console.print(f"[red]API connection failed:[/red] {error}")
+                raise SystemExit(1)
+
+            console.print(f"[green]Connected to Railway API![/green]")
+            if config.railway_project_id:
+                console.print(f"  Using project: {config.railway_project_id}")
+            else:
+                console.print("  Project: Will be created on first launch")
 
     except ConfigError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
