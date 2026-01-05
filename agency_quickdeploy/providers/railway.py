@@ -10,13 +10,83 @@ Railway API Reference:
 """
 
 import json
-from typing import Optional, Any
+import re
+from typing import Optional, Any, Tuple
 
 import requests
 
 from agency_quickdeploy.providers.base import BaseProvider, DeploymentResult
 from agency_quickdeploy.config import QuickDeployConfig
 from agency_quickdeploy.auth import Credentials
+
+
+# Railway API endpoint
+RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2"
+
+# UUID pattern for Railway tokens
+UUID_PATTERN = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    re.IGNORECASE
+)
+
+
+def validate_railway_token_format(token: Optional[str]) -> bool:
+    """Validate Railway token format.
+
+    Railway tokens are UUIDs (e.g., 3fca9fef-8953-486f-b772-af5f34417ef7).
+
+    Args:
+        token: The token to validate
+
+    Returns:
+        True if token matches UUID format, False otherwise
+    """
+    if not token:
+        return False
+    return bool(UUID_PATTERN.match(token))
+
+
+def validate_railway_token_api(token: str) -> Tuple[bool, Optional[str]]:
+    """Validate Railway token by testing API connectivity.
+
+    Makes a minimal GraphQL query to verify the token works.
+
+    Args:
+        token: Railway API token
+
+    Returns:
+        Tuple of (success, error_message). If success is True, error is None.
+    """
+    try:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        # Minimal query to test token validity
+        query = {"query": "query { me { id email } }"}
+
+        response = requests.post(RAILWAY_API_URL, headers=headers, json=query, timeout=10)
+        response.raise_for_status()
+
+        result = response.json()
+
+        if result.get("errors"):
+            error_msg = result["errors"][0].get("message", "Unknown error")
+            return False, f"Invalid token: {error_msg}. Get a new token at railway.com/account/tokens"
+
+        if result.get("data", {}).get("me"):
+            return True, None
+
+        return False, "Invalid token: No user data returned"
+
+    except requests.exceptions.ConnectionError:
+        return False, "Network error: Cannot connect to Railway API. Check your internet connection."
+    except requests.exceptions.Timeout:
+        return False, "Network error: Railway API request timed out. Try again."
+    except requests.exceptions.HTTPError as e:
+        return False, f"HTTP error: {e}. Check your token at railway.com/account/tokens"
+    except Exception as e:
+        return False, f"Unexpected error: {e}"
 
 
 # Default Docker image for Claude agent

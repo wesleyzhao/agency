@@ -424,3 +424,84 @@ class TestRailwayProviderProjectManagement:
         assert result.status == "launching"
         # Should have called API twice (create project + create service)
         assert mock_requests.post.call_count >= 1
+
+
+class TestRailwayTokenValidation:
+    """Tests for Railway token validation (TDD - Phase 1.1)."""
+
+    def test_validate_token_format_valid_uuid(self):
+        """Valid Railway tokens (UUIDs) should pass format validation."""
+        from agency_quickdeploy.providers.railway import validate_railway_token_format
+
+        # Railway tokens are UUIDs like: 3fca9fef-8953-486f-b772-af5f34417ef7
+        assert validate_railway_token_format("3fca9fef-8953-486f-b772-af5f34417ef7") is True
+        assert validate_railway_token_format("a1b2c3d4-e5f6-7890-abcd-ef1234567890") is True
+
+    def test_validate_token_format_invalid_empty(self):
+        """Empty or None tokens should fail format validation."""
+        from agency_quickdeploy.providers.railway import validate_railway_token_format
+
+        assert validate_railway_token_format("") is False
+        assert validate_railway_token_format(None) is False
+
+    def test_validate_token_format_invalid_wrong_format(self):
+        """Non-UUID format tokens should fail validation."""
+        from agency_quickdeploy.providers.railway import validate_railway_token_format
+
+        # Anthropic API key format (wrong)
+        assert validate_railway_token_format("sk-ant-api03-xxx") is False
+        # Too short
+        assert validate_railway_token_format("abc123") is False
+        # Random string
+        assert validate_railway_token_format("not-a-valid-token") is False
+
+    @patch("agency_quickdeploy.providers.railway.requests")
+    def test_validate_token_api_success(self, mock_requests):
+        """Valid token should pass API connectivity check."""
+        from agency_quickdeploy.providers.railway import validate_railway_token_api
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "data": {"me": {"id": "user-123", "email": "test@example.com"}}
+        }
+        mock_response.raise_for_status = Mock()
+        mock_requests.post.return_value = mock_response
+
+        success, error = validate_railway_token_api("valid-token")
+
+        assert success is True
+        assert error is None
+        mock_requests.post.assert_called_once()
+
+    @patch("agency_quickdeploy.providers.railway.requests")
+    def test_validate_token_api_invalid_token(self, mock_requests):
+        """Invalid token should fail API check with helpful error."""
+        from agency_quickdeploy.providers.railway import validate_railway_token_api
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "errors": [{"message": "Unauthorized"}]
+        }
+        mock_response.raise_for_status = Mock()
+        mock_requests.post.return_value = mock_response
+
+        success, error = validate_railway_token_api("invalid-token")
+
+        assert success is False
+        assert error is not None
+        assert "token" in error.lower() or "unauthorized" in error.lower()
+
+    @patch("agency_quickdeploy.providers.railway.requests")
+    def test_validate_token_api_network_error(self, mock_requests):
+        """Network errors should be handled gracefully."""
+        from agency_quickdeploy.providers.railway import validate_railway_token_api
+        import requests.exceptions
+
+        mock_requests.exceptions = requests.exceptions
+        mock_requests.post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+
+        success, error = validate_railway_token_api("some-token")
+
+        assert success is False
+        assert error is not None
+        assert "network" in error.lower() or "connection" in error.lower()
