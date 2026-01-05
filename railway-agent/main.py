@@ -178,8 +178,12 @@ After implementing:
 Work autonomously - do not ask for confirmation."""
 
 
-async def run_session(workspace: Path, prompt: str) -> None:
-    """Run a single Claude Code session."""
+async def run_session(workspace: Path, prompt: str) -> bool:
+    """Run a single Claude Code session.
+
+    Returns:
+        True if session completed successfully, False if there was an error
+    """
     from claude_agent_sdk import query
 
     log(f"Starting session in {workspace}")
@@ -194,14 +198,23 @@ async def run_session(workspace: Path, prompt: str) -> None:
             }
         )
         log(f"Session completed: {result}")
+        return True
     except Exception as e:
         log(f"Session error: {e}")
-        raise
+        return False
 
 
 async def run_agent_loop(workspace: Path, app_spec: str, max_iterations: int) -> None:
-    """Run the continuous agent loop."""
+    """Run the continuous agent loop.
+
+    This loop is designed for 24/7 operation with error recovery.
+    Individual session failures don't crash the loop - it will retry
+    with exponential backoff.
+    """
     iteration = 0
+    consecutive_failures = 0
+    max_consecutive_failures = 5
+    base_retry_delay = 30  # seconds
 
     while True:
         iteration += 1
@@ -215,8 +228,23 @@ async def run_agent_loop(workspace: Path, app_spec: str, max_iterations: int) ->
         # Generate prompt for this session
         prompt = get_prompt(workspace, app_spec)
 
-        # Run the session
-        await run_session(workspace, prompt)
+        # Run the session with error handling
+        success = await run_session(workspace, prompt)
+
+        if success:
+            consecutive_failures = 0
+        else:
+            consecutive_failures += 1
+            if consecutive_failures >= max_consecutive_failures:
+                log(f"Too many consecutive failures ({consecutive_failures}), pausing for recovery")
+                # Exponential backoff: 30s, 60s, 120s, 240s, 480s
+                retry_delay = base_retry_delay * (2 ** min(consecutive_failures - 1, 4))
+                log(f"Waiting {retry_delay} seconds before retry...")
+                await asyncio.sleep(retry_delay)
+            else:
+                log(f"Session failed, retrying after short delay ({consecutive_failures}/{max_consecutive_failures})")
+                await asyncio.sleep(5)
+            continue  # Retry without incrementing logical progress
 
         # Check if all features are complete
         pending = get_pending_features(workspace)
@@ -234,39 +262,53 @@ def main() -> None:
     """Main entry point."""
     log("Railway Agent Runner starting...")
 
-    # Get required environment variables
-    agent_id = get_env("AGENT_ID", required=True)
-    agent_prompt = get_env("AGENT_PROMPT", required=True)
-    max_iterations = int(get_env("MAX_ITERATIONS", "0"))
+    # Check NO_SHUTDOWN flag early so we can use it in error handling
+    no_shutdown = get_env("NO_SHUTDOWN", "false").lower() == "true"
+    error_occurred = False
 
-    log(f"Agent ID: {agent_id}")
-    log(f"Max iterations: {max_iterations if max_iterations > 0 else 'unlimited'}")
-
-    # Set up credentials
-    setup_credentials()
-
-    # Set up workspace
-    workspace = setup_workspace(agent_id, agent_prompt)
-    log(f"Workspace: {workspace}")
-
-    # Run the agent loop
     try:
+        # Get required environment variables
+        agent_id = get_env("AGENT_ID", required=True)
+        agent_prompt = get_env("AGENT_PROMPT", required=True)
+        max_iterations = int(get_env("MAX_ITERATIONS", "0"))
+
+        log(f"Agent ID: {agent_id}")
+        log(f"Max iterations: {max_iterations if max_iterations > 0 else 'unlimited'}")
+        log(f"NO_SHUTDOWN: {no_shutdown}")
+
+        # Set up credentials
+        setup_credentials()
+
+        # Set up workspace
+        workspace = setup_workspace(agent_id, agent_prompt)
+        log(f"Workspace: {workspace}")
+
+        # Run the agent loop
         asyncio.run(run_agent_loop(workspace, agent_prompt, max_iterations))
+
     except KeyboardInterrupt:
         log("Agent interrupted")
     except Exception as e:
         log(f"Agent error: {e}")
-        raise
+        error_occurred = True
+        import traceback
+        traceback.print_exc()
 
-    # Check NO_SHUTDOWN flag
-    no_shutdown = get_env("NO_SHUTDOWN", "false").lower() == "true"
+    # Handle shutdown behavior
     if no_shutdown:
-        log("NO_SHUTDOWN set - keeping container running")
+        if error_occurred:
+            log("NO_SHUTDOWN set - keeping container running despite error (for debugging)")
+        else:
+            log("NO_SHUTDOWN set - keeping container running")
         # Keep running so Railway doesn't restart
         while True:
             asyncio.run(asyncio.sleep(3600))
     else:
-        log("Agent complete - container will exit")
+        if error_occurred:
+            log("Agent failed - container will exit with error")
+            sys.exit(1)
+        else:
+            log("Agent complete - container will exit")
 
 
 if __name__ == "__main__":
