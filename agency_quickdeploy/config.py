@@ -5,7 +5,7 @@ agency-quickdeploy CLI tool.
 """
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from agency_quickdeploy.auth import AuthType
