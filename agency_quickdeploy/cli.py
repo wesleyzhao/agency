@@ -1,7 +1,7 @@
 """CLI for agency-quickdeploy.
 
 This module provides the command-line interface for launching and managing
-continuous Claude Code agents on GCP.
+continuous Claude Code agents on GCP or Railway.
 """
 import click
 from rich.console import Console
@@ -19,7 +19,7 @@ load_dotenv()
 @click.group()
 @click.version_option(version="0.1.0")
 def cli():
-    """Agency QuickDeploy - Launch Claude Code agents on GCP with one command."""
+    """Agency QuickDeploy - Launch Claude Code agents on GCP or Railway with one command."""
     pass
 
 
@@ -28,32 +28,43 @@ def cli():
 @click.option("--name", "-n", help="Custom agent name (auto-generated if not provided)")
 @click.option("--repo", "-r", help="Git repository to clone")
 @click.option("--branch", "-b", help="Git branch to use")
-@click.option("--spot", is_flag=True, help="Use spot/preemptible instance (cheaper)")
+@click.option("--spot", is_flag=True, help="Use spot/preemptible instance (cheaper, GCP only)")
 @click.option("--max-iterations", "-m", type=int, default=0, help="Max iterations (0=unlimited)")
-@click.option("--no-shutdown", is_flag=True, help="Keep VM running after completion (for inspection)")
+@click.option("--no-shutdown", is_flag=True, help="Keep running after completion (for inspection)")
 @click.option(
     "--auth-type", "-a",
     type=click.Choice(["api_key", "oauth"], case_sensitive=False),
     help="Authentication type: api_key (default) or oauth (subscription-based)"
 )
-def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_type):
+@click.option(
+    "--provider", "-p",
+    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    help="Deployment provider: gcp (default) or railway"
+)
+def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_type, provider):
     """Launch a new agent with the given PROMPT.
 
     Example:
         agency-quickdeploy launch "Build a todo app with React"
+        agency-quickdeploy launch "Build an API" --provider railway
         agency-quickdeploy launch "Build an API" --auth-type oauth
     """
     try:
-        config = load_config(auth_type_override=auth_type)
+        config = load_config(auth_type_override=auth_type, provider_override=provider)
     except ConfigError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
-        console.print("\nSet QUICKDEPLOY_PROJECT environment variable to your GCP project ID.")
+        if provider == "railway":
+            console.print("\nSet RAILWAY_TOKEN environment variable.")
+        else:
+            console.print("\nSet QUICKDEPLOY_PROJECT environment variable to your GCP project ID.")
         raise SystemExit(1)
 
     console.print(f"[cyan]Launching agent...[/cyan]")
-    console.print(f"  Project: {config.gcp_project}")
-    console.print(f"  Zone: {config.gcp_zone}")
-    console.print(f"  Bucket: {config.gcs_bucket}")
+    console.print(f"  Provider: {config.provider.value}")
+    if config.provider.value == "gcp":
+        console.print(f"  Project: {config.gcp_project}")
+        console.print(f"  Zone: {config.gcp_zone}")
+        console.print(f"  Bucket: {config.gcs_bucket}")
     console.print(f"  Auth: {config.auth_type.value}")
 
     launcher = QuickDeployLauncher(config)
@@ -75,15 +86,15 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
     console.print(f"  Agent ID: {result.agent_id}")
     console.print(f"  Status: {result.status}")
     if no_shutdown:
-        console.print(f"  [yellow]NO_SHUTDOWN mode:[/yellow] VM will stay running after completion")
+        console.print(f"  [yellow]NO_SHUTDOWN mode:[/yellow] Will stay running after completion")
     console.print(f"\nMonitor progress:")
     console.print(f"  agency-quickdeploy status {result.agent_id}")
     console.print(f"  agency-quickdeploy logs {result.agent_id}")
-    if no_shutdown:
+    if no_shutdown and config.provider.value == "gcp":
         console.print(f"\nSSH into VM:")
         console.print(f"  gcloud compute ssh {result.agent_id} --zone={config.gcp_zone} --project={config.gcp_project}")
-        console.print(f"\nStop when done:")
-        console.print(f"  agency-quickdeploy stop {result.agent_id}")
+    console.print(f"\nStop when done:")
+    console.print(f"  agency-quickdeploy stop {result.agent_id}")
 
 
 @cli.command()
