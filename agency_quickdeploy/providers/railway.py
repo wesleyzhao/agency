@@ -202,6 +202,44 @@ class RailwayProvider(BaseProvider):
         response.raise_for_status()
         return response.json()
 
+    def _discover_project_id(self) -> Optional[str]:
+        """Discover project ID by searching for 'agency-quickdeploy' project.
+
+        Useful when project_id is not configured - finds an existing project
+        created by a previous launch.
+
+        Returns:
+            Project ID if found, None otherwise
+        """
+        try:
+            result = self._graphql(
+                """
+                query myProjects {
+                    me {
+                        projects {
+                            edges {
+                                node {
+                                    id
+                                    name
+                                }
+                            }
+                        }
+                    }
+                }
+                """
+            )
+
+            projects = result.get("data", {}).get("me", {}).get("projects", {}).get("edges", [])
+            for edge in projects:
+                project = edge.get("node", {})
+                if project.get("name") == "agency-quickdeploy":
+                    self.project_id = project["id"]
+                    return project["id"]
+
+            return None
+        except Exception:
+            return None
+
     def _ensure_project(self) -> str:
         """Ensure a Railway project exists, creating one if needed.
 

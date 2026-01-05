@@ -600,6 +600,133 @@ class TestRailwayRepoDeployment:
         assert "github.com" in AGENT_REPO_URL or "github" in AGENT_REPO_URL.lower()
 
 
+class TestRailwayServiceDiscovery:
+    """Tests for service discovery across CLI invocations (TDD - Phase 3)."""
+
+    @patch("agency_quickdeploy.providers.railway.requests")
+    def test_get_service_id_finds_service_without_cache(self, mock_requests):
+        """_get_service_id should find service by name even with empty cache."""
+        from agency_quickdeploy.providers.railway import RailwayProvider
+        from agency_quickdeploy.config import QuickDeployConfig
+        from agency_quickdeploy.providers.base import ProviderType
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "data": {
+                "project": {
+                    "services": {
+                        "edges": [
+                            {"node": {"id": "service-abc", "name": "agent-123"}},
+                            {"node": {"id": "service-def", "name": "agent-456"}},
+                        ]
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = Mock()
+        mock_requests.post.return_value = mock_response
+
+        config = QuickDeployConfig(
+            provider=ProviderType.RAILWAY,
+            railway_token="test-token",
+            railway_project_id="project-123",
+        )
+        # Fresh provider instance (no cache)
+        provider = RailwayProvider(config)
+        assert provider._service_map == {}  # Verify cache is empty
+
+        service_id = provider._get_service_id("agent-123")
+
+        assert service_id == "service-abc"
+        # Should have populated cache
+        assert provider._service_map["agent-123"] == "service-abc"
+
+    @patch("agency_quickdeploy.providers.railway.requests")
+    def test_status_works_across_cli_invocations(self, mock_requests):
+        """status() should work even with fresh provider instance."""
+        from agency_quickdeploy.providers.railway import RailwayProvider
+        from agency_quickdeploy.config import QuickDeployConfig
+        from agency_quickdeploy.providers.base import ProviderType
+
+        # First call to find service, second to get deployments
+        mock_responses = [
+            Mock(json=lambda: {
+                "data": {
+                    "project": {
+                        "services": {
+                            "edges": [
+                                {"node": {"id": "service-abc", "name": "agent-test"}},
+                            ]
+                        }
+                    }
+                }
+            }),
+            Mock(json=lambda: {
+                "data": {
+                    "deployments": {
+                        "edges": [{
+                            "node": {
+                                "id": "deploy-123",
+                                "status": "SUCCESS",
+                                "staticUrl": "https://agent.up.railway.app",
+                            }
+                        }]
+                    }
+                }
+            }),
+        ]
+        for m in mock_responses:
+            m.raise_for_status = Mock()
+        mock_requests.post.side_effect = mock_responses
+
+        config = QuickDeployConfig(
+            provider=ProviderType.RAILWAY,
+            railway_token="test-token",
+            railway_project_id="project-123",
+        )
+        # Fresh provider (simulating new CLI invocation)
+        provider = RailwayProvider(config)
+
+        status = provider.status("agent-test")
+
+        assert status["agent_id"] == "agent-test"
+        assert status["status"] in ["running", "SUCCESS"]
+
+    @patch("agency_quickdeploy.providers.railway.requests")
+    def test_discover_project_finds_by_name(self, mock_requests):
+        """_discover_project_id should find project by name."""
+        from agency_quickdeploy.providers.railway import RailwayProvider
+        from agency_quickdeploy.config import QuickDeployConfig
+        from agency_quickdeploy.providers.base import ProviderType
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "data": {
+                "me": {
+                    "projects": {
+                        "edges": [
+                            {"node": {"id": "proj-abc", "name": "other-project"}},
+                            {"node": {"id": "proj-def", "name": "agency-quickdeploy"}},
+                        ]
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = Mock()
+        mock_requests.post.return_value = mock_response
+
+        config = QuickDeployConfig(
+            provider=ProviderType.RAILWAY,
+            railway_token="test-token",
+            # No project_id configured
+        )
+        provider = RailwayProvider(config)
+
+        project_id = provider._discover_project_id()
+
+        assert project_id == "proj-def"
+
+
 class TestRailwayError:
     """Tests for RailwayError class with actionable messages (TDD - Phase 1.2)."""
 
