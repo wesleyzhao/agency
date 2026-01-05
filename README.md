@@ -6,7 +6,7 @@
 
 ## Overview
 
-This repository contains **two complementary tools** for running autonomous AI coding agents on GCP:
+This repository contains **two complementary tools** for running autonomous AI coding agents on **GCP or Railway**:
 
 ### 🚀 agency-quickdeploy (Recommended for Getting Started)
 **Standalone, zero-infrastructure launcher** - One command to launch an agent. No server needed.
@@ -45,10 +45,10 @@ agentctl run "Build a REST API for a todo app"
 ---
 
 **Both tools:**
-- **Isolated VMs** - Each agent runs in its own cloud VM
-- **SSH Access** - Drop into any agent's terminal
-- **GCS Integration** - Logs and output synced to Cloud Storage
-- **Cost Efficient** - VMs auto-terminate when done
+- **Isolated environments** - Each agent runs in its own VM or container
+- **SSH Access** - Drop into any agent's terminal (GCP only)
+- **Cloud Storage** - Logs and output synced automatically
+- **Cost Efficient** - Auto-terminate when done
 - **OAuth & API Key** - Support both Claude subscription and pay-per-token billing
 
 ## Quick Start
@@ -56,11 +56,10 @@ agentctl run "Build a REST API for a todo app"
 ### Prerequisites
 
 - Python 3.11+
-- Google Cloud SDK (`gcloud`)
-- A GCP project with billing enabled
-- **Authentication:** Choose one:
-  - Anthropic API key (pay-per-token) - Get from [console.anthropic.com](https://console.anthropic.com/)
-  - Claude Code OAuth token (subscription) - Generate with `claude setup-token`
+- **Anthropic API key** - Get from [console.anthropic.com](https://console.anthropic.com/)
+- **Deployment platform** (choose one):
+  - **GCP**: Google Cloud SDK + project with billing enabled
+  - **Railway**: Account at [railway.com](https://railway.com) (simpler, faster startup)
 
 ### Installation
 
@@ -78,47 +77,63 @@ agency-quickdeploy --help
 agentctl --version
 ```
 
-### Option A: Quick Start with agency-quickdeploy (Easiest)
+### Quick Start with agency-quickdeploy
 
-**No server setup required!** Just configure and launch:
+**No server setup required!** Choose your platform:
+
+<details open>
+<summary><b>🚂 Railway (Easiest - No GCP needed)</b></summary>
 
 ```bash
-# 1. Set up environment
-cp .env.example .env
-# Edit .env and add your QUICKDEPLOY_PROJECT and ANTHROPIC_API_KEY
+# 1. Set environment variables
+export RAILWAY_TOKEN=your-token      # Get from railway.com/account/tokens
+export ANTHROPIC_API_KEY=sk-ant-...  # Get from console.anthropic.com
+
+# 2. Verify setup
+agency-quickdeploy init --provider railway
+
+# 3. Launch an agent
+agency-quickdeploy launch "Build a Python calculator CLI" --provider railway
+
+# 4. Monitor and stop
+agency-quickdeploy status <agent-id> --provider railway
+agency-quickdeploy logs <agent-id> --provider railway
+agency-quickdeploy stop <agent-id> --provider railway
+```
+
+</details>
+
+<details>
+<summary><b>☁️ GCP (Full-featured with SSH access)</b></summary>
+
+```bash
+# 1. Set environment variables
+export QUICKDEPLOY_PROJECT=your-gcp-project
+export ANTHROPIC_API_KEY=sk-ant-...
 
 # 2. Authenticate with GCP
 gcloud auth login
 gcloud auth application-default login
 
 # 3. Launch an agent
-agency-quickdeploy launch "Build a Python calculator CLI with tests"
+agency-quickdeploy launch "Build a Python calculator CLI"
 
-# 4. Monitor progress
+# 4. Monitor and stop
 agency-quickdeploy status <agent-id>
 agency-quickdeploy logs <agent-id>
-
-# 5. Stop when done (or use --no-shutdown to keep VM running)
 agency-quickdeploy stop <agent-id>
+
+# SSH into running agent (GCP only)
+gcloud compute ssh <agent-id> --zone=us-central1-a
 ```
 
-**Advanced usage:**
-```bash
-# Use OAuth token instead of API key
-agency-quickdeploy launch "Build an app" --auth-type oauth
-
-# Keep VM running after completion for inspection
-agency-quickdeploy launch "Build an app" --no-shutdown
-
-# List all running agents
-agency-quickdeploy list
-```
+</details>
 
 See the [agency-quickdeploy documentation](#agency-quickdeploy-reference) below for full details.
 
 ---
 
-### Option B: Full Setup with agentctl (Advanced)
+### Full Setup with agentctl (Advanced)
 
 ### Setup
 
@@ -394,28 +409,7 @@ CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
 agency-quickdeploy launch "Build something" --auth-type oauth
 ```
 
-### Railway Quick Start
-
-```bash
-# 1. Get your Railway API token from railway.com/account/tokens
-export RAILWAY_TOKEN=your-railway-token   # Must be UUID format
-
-# 2. Set your Anthropic API key
-export ANTHROPIC_API_KEY=sk-ant-api...
-
-# 3. Verify configuration (validates token & tests connectivity)
-agency-quickdeploy init --provider railway
-
-# 4. Launch an agent on Railway
-agency-quickdeploy launch "Build a todo app" --provider railway
-
-# 5. Monitor progress
-agency-quickdeploy status <agent-id> --provider railway
-agency-quickdeploy logs <agent-id> --provider railway
-
-# 6. Stop when done
-agency-quickdeploy stop <agent-id> --provider railway
-```
+### Railway Details
 
 **How Railway deployment works:**
 - Railway clones this repo and builds from `railway-agent/` directory
