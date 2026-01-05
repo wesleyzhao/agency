@@ -100,6 +100,7 @@ def validate_railway_token_api(token: str) -> Tuple[bool, Optional[str]]:
     """Validate Railway token by testing API connectivity.
 
     Makes a minimal GraphQL query to verify the token works.
+    Uses 'projects' query instead of 'me' as some token types can't access 'me'.
 
     Args:
         token: Railway API token
@@ -112,8 +113,9 @@ def validate_railway_token_api(token: str) -> Tuple[bool, Optional[str]]:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        # Minimal query to test token validity
-        query = {"query": "query { me { id email } }"}
+        # Use projects query - works with all token types that can deploy
+        # The 'me' query doesn't work with some token types
+        query = {"query": "{ projects { edges { node { id name } } } }"}
 
         response = requests.post(RAILWAY_API_URL, headers=headers, json=query, timeout=10)
         response.raise_for_status()
@@ -122,12 +124,13 @@ def validate_railway_token_api(token: str) -> Tuple[bool, Optional[str]]:
 
         if result.get("errors"):
             error_msg = result["errors"][0].get("message", "Unknown error")
-            return False, f"Invalid token: {error_msg}. Get a new token at railway.com/account/tokens"
+            return False, f"API error: {error_msg}. Check your token at railway.com/account/tokens"
 
-        if result.get("data", {}).get("me"):
+        # If we got data back (even empty projects list), token is valid
+        if "data" in result and "projects" in result["data"]:
             return True, None
 
-        return False, "Invalid token: No user data returned"
+        return False, "Invalid response from Railway API"
 
     except requests.exceptions.ConnectionError:
         return False, "Network error: Cannot connect to Railway API. Check your internet connection."

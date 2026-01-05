@@ -463,7 +463,7 @@ class TestRailwayTokenValidation:
 
         mock_response = Mock()
         mock_response.json.return_value = {
-            "data": {"me": {"id": "user-123", "email": "test@example.com"}}
+            "data": {"projects": {"edges": [{"node": {"id": "proj-123", "name": "test"}}]}}
         }
         mock_response.raise_for_status = Mock()
         mock_requests.post.return_value = mock_response
