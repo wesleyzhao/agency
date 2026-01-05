@@ -508,13 +508,13 @@ class TestRailwayTokenValidation:
         assert "network" in error.lower() or "connection" in error.lower()
 
 
-class TestRailwayRepoDeployment:
-    """Tests for GitHub repo-based deployment (TDD - Phase 2.2)."""
+class TestRailwayDeployment:
+    """Tests for Railway deployment sources (Docker image vs GitHub repo)."""
 
     @patch("agency_quickdeploy.providers.railway.requests")
-    def test_launch_uses_repo_source_not_image(self, mock_requests):
-        """Launch should use source.repo instead of source.image."""
-        from agency_quickdeploy.providers.railway import RailwayProvider, AGENT_REPO_URL
+    def test_launch_uses_docker_image_by_default(self, mock_requests):
+        """Launch should use Docker image by default (no GitHub OAuth required)."""
+        from agency_quickdeploy.providers.railway import RailwayProvider, DEFAULT_AGENT_IMAGE
         from agency_quickdeploy.config import QuickDeployConfig
         from agency_quickdeploy.providers.base import ProviderType
         from agency_quickdeploy.auth import Credentials
@@ -549,8 +549,8 @@ class TestRailwayRepoDeployment:
         call_args = mock_requests.post.call_args
         request_body = call_args[1]["json"]
 
-        # Should use repo source
-        assert "repo" in str(request_body).lower() or AGENT_REPO_URL in str(request_body)
+        # Should use image source by default
+        assert "image" in str(request_body).lower() or DEFAULT_AGENT_IMAGE in str(request_body)
 
     @patch("agency_quickdeploy.providers.railway.requests")
     @patch.dict(os.environ, {"RAILWAY_AGENT_REPO": "https://github.com/myuser/my-agent-repo"})
@@ -592,8 +592,16 @@ class TestRailwayRepoDeployment:
         request_body = call_args[1]["json"]
         assert "my-agent-repo" in str(request_body) or "myuser" in str(request_body)
 
+    def test_default_agent_image_constant_exists(self):
+        """DEFAULT_AGENT_IMAGE constant should be a valid Docker image reference."""
+        from agency_quickdeploy.providers.railway import DEFAULT_AGENT_IMAGE
+
+        assert DEFAULT_AGENT_IMAGE is not None
+        # Should be a ghcr.io image
+        assert "ghcr.io" in DEFAULT_AGENT_IMAGE or "docker" in DEFAULT_AGENT_IMAGE.lower()
+
     def test_agent_repo_url_constant_exists(self):
-        """AGENT_REPO_URL constant should be in owner/repo format."""
+        """AGENT_REPO_URL constant should be in owner/repo format (for optional repo deployment)."""
         from agency_quickdeploy.providers.railway import AGENT_REPO_URL
 
         assert AGENT_REPO_URL is not None
@@ -702,15 +710,14 @@ class TestRailwayServiceDiscovery:
         from agency_quickdeploy.providers.base import ProviderType
 
         mock_response = Mock()
+        # Uses 'projects' query instead of 'me.projects' to work with all token types
         mock_response.json.return_value = {
             "data": {
-                "me": {
-                    "projects": {
-                        "edges": [
-                            {"node": {"id": "proj-abc", "name": "other-project"}},
-                            {"node": {"id": "proj-def", "name": "agency-quickdeploy"}},
-                        ]
-                    }
+                "projects": {
+                    "edges": [
+                        {"node": {"id": "proj-abc", "name": "other-project"}},
+                        {"node": {"id": "proj-def", "name": "agency-quickdeploy"}},
+                    ]
                 }
             }
         }

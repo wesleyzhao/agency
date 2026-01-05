@@ -142,20 +142,26 @@ def validate_railway_token_api(token: str) -> Tuple[bool, Optional[str]]:
         return False, f"Unexpected error: {e}"
 
 
-# Default GitHub repo containing the agent runner code
-# Railway clones this repo and uses railway.toml at root for build config
-# The agent code lives in railway-agent/ subdirectory
-# Users can override via RAILWAY_AGENT_REPO environment variable
+# Default Docker image for the agent runner
+# Users can override via RAILWAY_AGENT_IMAGE environment variable
+# Image is built from railway-agent/Dockerfile and published to GHCR
+DEFAULT_AGENT_IMAGE = "ghcr.io/wesleyzhao/agency-railway-agent:latest"
+
+# Alternative: GitHub repo deployment (requires GitHub OAuth connection in Railway)
+# Users can set RAILWAY_AGENT_REPO to use repo-based deployment instead
 AGENT_REPO_URL = "wesleyzhao/agency"
 
 
 class RailwayProvider(BaseProvider):
-    """Railway provider using GitHub repo deployment.
+    """Railway provider using Docker image deployment.
 
-    This provider deploys Claude agents as Railway services by
-    cloning a GitHub repository. The repo must have:
-    - railway.toml at root with build/start commands
-    - railway-agent/ subdirectory with the agent code
+    This provider deploys Claude agents as Railway services using
+    a pre-built Docker image. This approach doesn't require users
+    to connect GitHub to Railway.
+
+    Users can optionally use GitHub repo deployment by setting
+    RAILWAY_AGENT_REPO environment variable, but this requires
+    connecting GitHub to Railway first.
     """
 
     API_URL = "https://backboard.railway.com/graphql/v2"
@@ -213,16 +219,15 @@ class RailwayProvider(BaseProvider):
             Project ID if found, None otherwise
         """
         try:
+            # Use 'projects' query instead of 'me' - works with all token types
             result = self._graphql(
                 """
-                query myProjects {
-                    me {
-                        projects {
-                            edges {
-                                node {
-                                    id
-                                    name
-                                }
+                query {
+                    projects {
+                        edges {
+                            node {
+                                id
+                                name
                             }
                         }
                     }
@@ -230,7 +235,7 @@ class RailwayProvider(BaseProvider):
                 """
             )
 
-            projects = result.get("data", {}).get("me", {}).get("projects", {}).get("edges", [])
+            projects = result.get("data", {}).get("projects", {}).get("edges", [])
             for edge in projects:
                 project = edge.get("node", {})
                 if project.get("name") == "agency-quickdeploy":
@@ -350,15 +355,23 @@ class RailwayProvider(BaseProvider):
                 cred_vars = credentials.get_env_vars()
                 env_vars.update(cred_vars)
 
-            # Get agent runner repo - format: "owner/repo" (e.g., "wesleyzhao/agency")
-            agent_repo = os.environ.get("RAILWAY_AGENT_REPO", AGENT_REPO_URL)
+            # Determine deployment source: Docker image (default) or GitHub repo
+            # GitHub repo requires users to connect GitHub to Railway first
+            agent_repo = os.environ.get("RAILWAY_AGENT_REPO")
+            agent_image = os.environ.get("RAILWAY_AGENT_IMAGE", DEFAULT_AGENT_IMAGE)
 
-            # Create service from GitHub repo
-            # Try simple format first - Railway may auto-detect from nixpacks.toml
+            if agent_repo:
+                # Use GitHub repo deployment (requires GitHub OAuth in Railway)
+                source = {"repo": agent_repo}
+            else:
+                # Use Docker image deployment (works without GitHub setup)
+                source = {"image": agent_image}
+
+            # Create service
             service_input = {
                 "name": agent_id,
                 "projectId": project_id,
-                "source": {"repo": agent_repo},
+                "source": source,
                 "variables": env_vars,
             }
 
@@ -424,7 +437,11 @@ class RailwayProvider(BaseProvider):
         if agent_id in self._service_map:
             return self._service_map[agent_id]
 
-        # Query Railway for service by name
+        # Try to discover project ID if not set
+        if not self.project_id:
+            self._discover_project_id()
+
+        # Still no project? Can't find service
         if not self.project_id:
             return None
 
@@ -637,6 +654,10 @@ class RailwayProvider(BaseProvider):
         Returns:
             List of agent dicts with name, status, etc.
         """
+        # Try to discover project ID if not set
+        if not self.project_id:
+            self._discover_project_id()
+
         if not self.project_id:
             return []
 
