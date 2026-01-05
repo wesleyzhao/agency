@@ -10,7 +10,9 @@ from typing import Optional
 
 from agency_quickdeploy.config import QuickDeployConfig
 from agency_quickdeploy.auth import AuthType, Credentials, OAuthCredentials
-from agency_quickdeploy.providers import BaseProvider, ProviderType, GCPProvider
+from agency_quickdeploy.providers import BaseProvider, ProviderType
+from agency_quickdeploy.providers.gcp import GCPProvider
+from agency_quickdeploy.providers.railway import RailwayProvider
 
 
 @dataclass
