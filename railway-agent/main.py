@@ -190,14 +190,22 @@ async def run_session(workspace: Path, prompt: str) -> bool:
     log(f"Prompt: {prompt[:100]}...")
 
     try:
-        result = await query(
+        # query() returns an AsyncIterator, not a coroutine
+        # We need to iterate over it to get messages
+        result_messages = []
+        async for message in query(
             prompt=prompt,
             options={
                 "cwd": str(workspace),
                 "permission_mode": "bypassPermissions",
             }
-        )
-        log(f"Session completed: {result}")
+        ):
+            # Log each message type as it comes in
+            msg_type = type(message).__name__
+            log(f"  {msg_type}: {str(message)[:100]}...")
+            result_messages.append(message)
+
+        log(f"Session completed with {len(result_messages)} messages")
         return True
     except Exception as e:
         log(f"Session error: {e}")
