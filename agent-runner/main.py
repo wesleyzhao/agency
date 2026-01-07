@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Railway Agent Runner - Entry point for Claude Code agents on Railway.
+"""Agent Runner - Entry point for Claude Code agents in containers.
 
-This script runs on Railway containers deployed by agency-quickdeploy.
+This script runs in Docker/Railway containers deployed by agency-quickdeploy.
 It reads configuration from environment variables and runs the autonomous
 agent loop using the claude-agent-sdk.
 
@@ -269,7 +269,7 @@ async def run_agent_loop(workspace: Path, app_spec: str, max_iterations: int) ->
 
 def main() -> None:
     """Main entry point."""
-    log("Railway Agent Runner starting...")
+    log("Agent Runner starting...")
 
     # Check NO_SHUTDOWN flag early so we can use it in error handling
     no_shutdown = get_env("NO_SHUTDOWN", "false").lower() == "true"
