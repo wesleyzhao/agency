@@ -188,6 +188,25 @@ if [ ! -f "$WORKDIR/feature_list.json" ]; then
 FEATURE_EOF"
 fi
 
+# === Create initial CONTEXT.md ===
+# Persistent architectural context file (inspired by Anand Chowdhary's continuous-claude)
+# Agents use this to maintain high-level design decisions across sessions
+if [ ! -f "$WORKDIR/CONTEXT.md" ]; then
+    log "Creating initial CONTEXT.md..."
+    sudo -u agent bash -c "cat > $WORKDIR/CONTEXT.md << 'CONTEXT_EOF'
+# Architectural Context
+
+This file maintains high-level architectural decisions and design patterns across sessions.
+Keep this concise - focus on:
+- Key architectural choices
+- Important design patterns
+- Critical constraints
+- Major refactoring decisions
+
+Update this when making significant architectural changes.
+CONTEXT_EOF"
+fi
+
 # === Save Prompt/App Spec ===
 cat > $WORKSPACE/app_spec.txt << 'PROMPT_END'
 __PROMPT__
@@ -280,8 +299,17 @@ Create feature_list.json with this structure:
 Start by reading feature_list.json and populating it with all required features."""
 
 
-def get_coding_prompt(app_spec: str, progress: str) -> str:
-    """Prompt for subsequent sessions - implements features."""
+def get_coding_prompt(app_spec: str, progress: str, context: str = "") -> str:
+    """Prompt for subsequent sessions - implements features.
+
+    Args:
+        app_spec: Application specification/requirements
+        progress: Recent progress notes (bounded to prevent ARG_MAX overflow)
+        context: Persistent architectural context from CONTEXT.md
+
+    Returns:
+        Prompt string for coding agent
+    """
     return f"""You are an AI coding agent continuing work on an application.
 
 ## Your Task
@@ -292,10 +320,13 @@ def get_coding_prompt(app_spec: str, progress: str) -> str:
 5. Update feature_list.json to mark it as "completed"
 6. Commit your changes with a descriptive message
 
-## Application Specification
+## Persistent Architectural Context
+{context}
+
+## Application Specification (Initial Requirements)
 {app_spec}
 
-## Previous Progress
+## Recent Progress (Last 20KB)
 {progress}
 
 ## Important Rules
@@ -303,16 +334,56 @@ def get_coding_prompt(app_spec: str, progress: str) -> str:
 - Test your work before marking complete
 - Always commit after completing a feature
 - Update claude-progress.txt with what you did
+- Update CONTEXT.md if you make major architectural decisions (keep it concise!)
+- If all features complete, output: CONTINUOUS_CLAUDE_PROJECT_COMPLETE
 
 Start by reading feature_list.json and picking the next pending feature."""
 
 
-def load_progress(project_dir: Path) -> str:
-    """Load progress notes from previous sessions."""
+def load_progress(project_dir: Path, max_kb: int = 20) -> str:
+    """Load recent progress, truncating if too large to prevent ARG_MAX overflow.
+
+    Args:
+        project_dir: Directory containing claude-progress.txt
+        max_kb: Maximum kilobytes to load (default: 20KB)
+
+    Returns:
+        Progress notes string, truncated if necessary
+    """
     progress_file = project_dir / "claude-progress.txt"
-    if progress_file.exists():
-        return progress_file.read_text()
-    return "No previous progress."
+
+    if not progress_file.exists():
+        return "No previous progress."
+
+    content = progress_file.read_text()
+    max_bytes = max_kb * 1024
+
+    if len(content) > max_bytes:
+        # Keep only recent progress (last ~20KB)
+        # Simple approach: truncate at newline boundary
+        truncated = content[-max_bytes:]
+        # Find first newline to avoid cutting mid-sentence
+        first_newline = truncated.find('\n')
+        if first_newline > 0:
+            truncated = truncated[first_newline+1:]
+        return f"[Earlier progress truncated - see git history for full context]\n\n{truncated}"
+
+    return content
+
+
+def load_context(project_dir: Path) -> str:
+    """Load persistent architectural context (Anand-style external memory).
+
+    Args:
+        project_dir: Directory containing CONTEXT.md
+
+    Returns:
+        Architectural context string, or empty string if file doesn't exist
+    """
+    context_file = project_dir / "CONTEXT.md"
+    if context_file.exists():
+        return context_file.read_text()
+    return ""
 
 
 def sync_to_gcs(workspace: Path, bucket: str, agent_id: str):
@@ -322,6 +393,7 @@ def sync_to_gcs(workspace: Path, bucket: str, agent_id: str):
     files_to_sync = [
         "feature_list.json",
         "claude-progress.txt",
+        "CONTEXT.md",  # Persistent architectural notes
     ]
 
     for fname in files_to_sync:
@@ -387,8 +459,9 @@ async def run_agent(
             prompt = get_initializer_prompt(app_spec)
         else:
             log("Continuing from previous session...")
-            progress = load_progress(project_dir)
-            prompt = get_coding_prompt(app_spec, progress)
+            progress = load_progress(project_dir, max_kb=20)  # Bounded to prevent ARG_MAX
+            context = load_context(project_dir)  # Load persistent architectural notes
+            prompt = get_coding_prompt(app_spec, progress, context)
 
             # Check if all features are complete
             feature_file = project_dir / "feature_list.json"
@@ -404,7 +477,13 @@ async def run_agent(
                     pass
 
         try:
-            await run_session(prompt, project_dir)
+            response = await run_session(prompt, project_dir)
+
+            # Check for completion signal (Anand-style)
+            if "CONTINUOUS_CLAUDE_PROJECT_COMPLETE" in response:
+                log("Agent signaled completion!")
+                break
+
         except Exception as e:
             log(f"Session error: {e}")
 
@@ -463,6 +542,7 @@ log "Starting GCS sync background job..."
         sleep 60
         gsutil -q cp $WORKDIR/feature_list.json gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
         gsutil -q cp $WORKDIR/claude-progress.txt gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
+        gsutil -q cp $WORKDIR/CONTEXT.md gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
         gsutil -q cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/ 2>/dev/null || true
     done
 ) &
@@ -517,6 +597,7 @@ kill $SYNC_PID 2>/dev/null || true
 log "Final GCS sync..."
 gsutil -q cp $WORKDIR/feature_list.json gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
 gsutil -q cp $WORKDIR/claude-progress.txt gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
+gsutil -q cp $WORKDIR/CONTEXT.md gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
 gsutil -q cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/ 2>/dev/null || true
 
 # Report final status
