@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install with all dependencies
 pip install -e ".[server,dev]"
 
-# Run all tests (135 tests)
+# Run all tests (164 tests)
 python -m pytest
 
 # Run a single test file
@@ -38,7 +38,7 @@ python -m pytest --cov=agentctl tests/
 
 ## Project Architecture
 
-This repository contains two CLI tools for managing autonomous Claude Code agents on GCP or Railway:
+This repository contains two CLI tools for managing autonomous Claude Code agents on GCP, AWS, Railway, or Docker:
 
 ### 1. `agentctl` - Full-featured agent management (requires master server)
 - **CLI** (`agentctl/cli/`): Click commands for run, list, status, stop, ssh, logs, screenshots, tell
@@ -48,8 +48,14 @@ This repository contains two CLI tools for managing autonomous Claude Code agent
 ### 2. `agency-quickdeploy` - Standalone one-command launcher (no server needed)
 - **CLI** (`agency_quickdeploy/cli.py`): launch, status, logs, stop, list, init
 - **Launcher** (`agency_quickdeploy/launcher.py`): Orchestrates resources via providers
-- **Providers** (`agency_quickdeploy/providers/`): Abstract provider with GCP and Railway implementations
+- **Providers** (`agency_quickdeploy/providers/`): Abstract provider with GCP, AWS, Railway, and Docker implementations
 - **GCP modules** (`agency_quickdeploy/gcp/`): vm.py, storage.py, secrets.py
+
+### Agent Runner (`agent-runner/`)
+Reusable Docker image for containerized providers (Docker, Railway):
+- `main.py`: Entry point that runs the autonomous agent loop
+- `Dockerfile`: Builds the agent container image
+- Published to `ghcr.io/wesleyzhao/agency-agent:latest`
 
 ### Shared Harness (`shared/harness/`)
 Reusable components for both tools:
@@ -93,19 +99,30 @@ agency-quickdeploy launch "Build an app" --auth-type oauth
 
 ## Environment Variables
 
-For `agency-quickdeploy` (GCP provider):
-- `QUICKDEPLOY_PROJECT` or `GOOGLE_CLOUD_PROJECT`: GCP project ID (required for GCP)
+Common:
+- `QUICKDEPLOY_PROVIDER`: Deployment provider (`gcp`, `aws`, `docker`, `railway`)
+- `QUICKDEPLOY_AUTH_TYPE`: Authentication type (`api_key` or `oauth`)
+- `ANTHROPIC_API_KEY`: API key (for api_key auth)
+- `CLAUDE_CODE_OAUTH_TOKEN`: OAuth token (for oauth auth)
+
+GCP provider:
+- `QUICKDEPLOY_PROJECT` or `GOOGLE_CLOUD_PROJECT`: GCP project ID (required)
 - `QUICKDEPLOY_ZONE`: GCP zone (default: us-central1-a)
 - `QUICKDEPLOY_BUCKET`: GCS bucket (auto-generated if not set)
-- `QUICKDEPLOY_AUTH_TYPE`: Authentication type (`api_key` or `oauth`)
-- `QUICKDEPLOY_PROVIDER`: Deployment provider (`gcp` or `railway`)
-- `ANTHROPIC_API_KEY`: API key (for api_key auth)
-- `CLAUDE_CODE_OAUTH_TOKEN`: OAuth token (for oauth auth, alternative to Secret Manager)
 
-For `agency-quickdeploy` (Railway provider):
+AWS provider:
+- `AWS_REGION` or `QUICKDEPLOY_AWS_REGION`: AWS region (default: us-east-1)
+- `AWS_BUCKET` or `QUICKDEPLOY_AWS_BUCKET`: S3 bucket for state storage
+- `AWS_INSTANCE_TYPE`: EC2 instance type (default: t3.medium)
+
+Docker provider (local):
+- `AGENCY_DATA_DIR`: Local data directory (default: ~/.agency)
+- `AGENCY_DOCKER_IMAGE`: Custom agent image (default: ghcr.io/wesleyzhao/agency-agent:latest)
+
+Railway provider:
 - `RAILWAY_TOKEN`: Railway API token (required, UUID format)
 - `RAILWAY_PROJECT_ID`: Railway project ID (optional, auto-created if not set)
-- `RAILWAY_AGENT_REPO`: Custom agent runner repo (optional, default: this repo)
+- `RAILWAY_AGENT_IMAGE`: Custom agent image (default: ghcr.io/wesleyzhao/agency-agent:latest)
 
 For `agentctl`:
 - `AGENTCTL_MASTER_URL`: Master server URL
@@ -137,6 +154,50 @@ agency-quickdeploy stop agent-20260102-abc123
 
 # List all running agents
 agency-quickdeploy list
+```
+
+### Docker Provider (Local - Free!)
+
+```bash
+# Launch agent locally in Docker container
+ANTHROPIC_API_KEY=sk-ant... agency-quickdeploy launch "Build a todo app" --provider docker
+
+# Initialize (pull the agent image)
+agency-quickdeploy init --provider docker
+
+# Monitor agent
+agency-quickdeploy status agent-123 --provider docker
+agency-quickdeploy logs agent-123 --provider docker
+
+# Access container shell
+docker exec -it agent-123 bash
+
+# Stop an agent
+agency-quickdeploy stop agent-123 --provider docker
+
+# List local agents
+agency-quickdeploy list --provider docker
+```
+
+### AWS Provider
+
+```bash
+# Launch agent on AWS EC2
+AWS_REGION=us-east-1 ANTHROPIC_API_KEY=sk-ant... \
+  agency-quickdeploy launch "Build a todo app" --provider aws
+
+# Use spot instances for cost savings
+agency-quickdeploy launch "Build an API" --provider aws --spot
+
+# Monitor agent
+agency-quickdeploy status agent-123 --provider aws
+agency-quickdeploy logs agent-123 --provider aws
+
+# Stop an agent
+agency-quickdeploy stop agent-123 --provider aws
+
+# List all AWS agents
+agency-quickdeploy list --provider aws
 ```
 
 ### Railway Provider

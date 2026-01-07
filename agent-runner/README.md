@@ -1,16 +1,17 @@
-# Railway Agent Runner
+# Agent Runner
 
-This directory contains the agent runner code that Railway deploys when using
-`agency-quickdeploy launch --provider railway`.
+This directory contains the agent runner code used by multiple providers:
+- **Docker**: `agency-quickdeploy launch --provider docker`
+- **Railway**: `agency-quickdeploy launch --provider railway`
+
+The same Docker image (`ghcr.io/wesleyzhao/agency-agent:latest`) is used by both providers.
 
 ## How It Works
 
-1. When you run `agency-quickdeploy launch "task" --provider railway`, the CLI creates
-   a Railway service that deploys from this directory in the GitHub repo.
+1. When you run `agency-quickdeploy launch "task" --provider docker|railway`, the CLI
+   pulls/deploys this Docker image.
 
-2. Railway uses Nixpacks to auto-detect the Python project and install dependencies.
-
-3. The `main.py` entry point reads environment variables passed by the launcher
+2. The `main.py` entry point reads environment variables passed by the launcher
    and runs the autonomous agent loop.
 
 ## Environment Variables
@@ -34,7 +35,7 @@ These are set automatically by the launcher:
 To test locally:
 
 ```bash
-cd railway-agent
+cd agent-runner
 pip install -r requirements.txt
 npm install -g @anthropic-ai/claude-code
 
@@ -47,4 +48,4 @@ python main.py
 ## Customization
 
 Fork this repo and modify the agent runner to customize behavior.
-Set `RAILWAY_AGENT_REPO` environment variable to your fork URL.
+Set `RAILWAY_AGENT_REPO` or `AGENCY_DOCKER_IMAGE` environment variable to your fork/custom image.

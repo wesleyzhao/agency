@@ -11,8 +11,6 @@ from typing import Optional
 from agency_quickdeploy.config import QuickDeployConfig
 from agency_quickdeploy.auth import AuthType, Credentials, OAuthCredentials
 from agency_quickdeploy.providers import BaseProvider, ProviderType
-from agency_quickdeploy.providers.gcp import GCPProvider
-from agency_quickdeploy.providers.railway import RailwayProvider
 
 
 @dataclass
@@ -52,11 +50,17 @@ class QuickDeployLauncher:
         """Lazy-initialize the deployment provider."""
         if self._provider is None:
             if self.config.provider == ProviderType.GCP:
+                from agency_quickdeploy.providers.gcp import GCPProvider
                 self._provider = GCPProvider(self.config)
             elif self.config.provider == ProviderType.RAILWAY:
-                # Import here to avoid circular dependency and defer until needed
                 from agency_quickdeploy.providers.railway import RailwayProvider
                 self._provider = RailwayProvider(self.config)
+            elif self.config.provider == ProviderType.AWS:
+                from agency_quickdeploy.providers.aws import AWSProvider
+                self._provider = AWSProvider(self.config)
+            elif self.config.provider == ProviderType.DOCKER:
+                from agency_quickdeploy.providers.docker import DockerProvider
+                self._provider = DockerProvider(self.config)
             else:
                 raise ValueError(f"Unknown provider: {self.config.provider}")
         return self._provider

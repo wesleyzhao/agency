@@ -144,8 +144,8 @@ def validate_railway_token_api(token: str) -> Tuple[bool, Optional[str]]:
 
 # Default Docker image for the agent runner
 # Users can override via RAILWAY_AGENT_IMAGE environment variable
-# Image is built from railway-agent/Dockerfile and published to GHCR
-DEFAULT_AGENT_IMAGE = "ghcr.io/wesleyzhao/agency-railway-agent:latest"
+# Image is built from agent-runner/Dockerfile and published to GHCR
+DEFAULT_AGENT_IMAGE = "ghcr.io/wesleyzhao/agency-agent:latest"
 
 # Alternative: GitHub repo deployment (requires GitHub OAuth connection in Railway)
 # Users can set RAILWAY_AGENT_REPO to use repo-based deployment instead

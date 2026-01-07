@@ -17,6 +17,8 @@ class ProviderType(Enum):
 
     GCP = "gcp"
     RAILWAY = "railway"
+    AWS = "aws"
+    DOCKER = "docker"
 
 
 @dataclass

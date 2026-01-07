@@ -1,21 +1,27 @@
 # AgentCtl
 
-> CLI-first system for deploying and managing autonomous AI coding agents on Google Cloud Platform or Railway
+> CLI-first system for deploying and managing autonomous AI coding agents on GCP, AWS, Railway, or locally via Docker
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Overview
 
-This repository contains **two complementary tools** for running autonomous AI coding agents on **GCP or Railway**:
+This repository contains **two complementary tools** for running autonomous AI coding agents on **GCP, AWS, Railway, or Docker**:
 
 ### 🚀 agency-quickdeploy (Recommended for Getting Started)
 **Standalone, zero-infrastructure launcher** - One command to launch an agent. No server needed.
 
 ```bash
-# Deploy on GCP (default)
-agency-quickdeploy launch "Build a Python CLI tool with tests"
+# Deploy locally (free - no cloud costs!)
+agency-quickdeploy launch "Build a Python CLI tool" --provider docker
 
-# Deploy on Railway (container-based)
+# Deploy on GCP (full VMs with SSH)
+agency-quickdeploy launch "Build a Python CLI tool" --provider gcp
+
+# Deploy on AWS (EC2 + S3)
+agency-quickdeploy launch "Build a Python CLI tool" --provider aws
+
+# Deploy on Railway (fast containers)
 agency-quickdeploy launch "Build a Python CLI tool" --provider railway
 ```
 
@@ -25,9 +31,11 @@ agency-quickdeploy launch "Build a Python CLI tool" --provider railway
 - Getting started without infrastructure setup
 - CI/CD integration
 
-**Supports two deployment providers:**
-- **GCP** (default) - Full-size VMs with SSH access
-- **Railway** - Lightweight containers, faster startup
+**Supports four deployment providers:**
+- **Docker** - Run locally for free, 24/7 agents on your own machine
+- **GCP** - Full-size VMs with SSH access, GCS for state
+- **AWS** - EC2 instances with S3 for state, spot instances supported
+- **Railway** - Lightweight containers, fast startup
 
 ### 🏗️ agentctl (Full-Featured)
 **Enterprise-ready agent orchestration** with centralized master server, SQLite persistence, and multi-agent management.
@@ -58,7 +66,9 @@ agentctl run "Build a REST API for a todo app"
 - Python 3.11+
 - **Anthropic API key** - Get from [console.anthropic.com](https://console.anthropic.com/)
 - **Deployment platform** (choose one):
+  - **Docker** (local): Docker installed on your machine (easiest, no cloud needed!)
   - **GCP**: Google Cloud SDK + project with billing enabled
+  - **AWS**: AWS CLI configured with credentials + S3 bucket
   - **Railway**: Account at [railway.com](https://railway.com) (simpler, faster startup)
 
 ### Installation
@@ -82,7 +92,31 @@ agentctl --version
 **No server setup required!** Choose your platform:
 
 <details open>
-<summary><b>🚂 Railway (Easiest - No GCP needed)</b></summary>
+<summary><b>🐳 Docker (Easiest - Run Locally for Free!)</b></summary>
+
+```bash
+# 1. Set environment variable
+export ANTHROPIC_API_KEY=sk-ant-...  # Get from console.anthropic.com
+
+# 2. Initialize (pulls the agent image)
+agency-quickdeploy init --provider docker
+
+# 3. Launch an agent
+agency-quickdeploy launch "Build a Python calculator CLI" --provider docker
+
+# 4. Monitor and interact
+agency-quickdeploy status <agent-id> --provider docker
+agency-quickdeploy logs <agent-id> --provider docker
+docker exec -it <agent-id> bash  # Shell into container
+
+# 5. Stop when done
+agency-quickdeploy stop <agent-id> --provider docker
+```
+
+</details>
+
+<details>
+<summary><b>🚂 Railway (Fast Containers)</b></summary>
 
 ```bash
 # 1. Set environment variables
@@ -125,6 +159,32 @@ agency-quickdeploy stop <agent-id>
 
 # SSH into running agent (GCP only)
 gcloud compute ssh <agent-id> --zone=us-central1-a
+```
+
+</details>
+
+<details>
+<summary><b>☁️ AWS (EC2 + S3)</b></summary>
+
+```bash
+# 1. Set environment variables
+export AWS_REGION=us-east-1              # Or your preferred region
+export AWS_BUCKET=my-agency-bucket       # For state storage (optional, auto-created)
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# 2. Configure AWS credentials (if not already done)
+aws configure
+
+# 3. Launch an agent
+agency-quickdeploy launch "Build a Python calculator CLI" --provider aws
+
+# 4. Use spot instances to save money
+agency-quickdeploy launch "Build an API" --provider aws --spot
+
+# 5. Monitor and stop
+agency-quickdeploy status <agent-id> --provider aws
+agency-quickdeploy logs <agent-id> --provider aws
+agency-quickdeploy stop <agent-id> --provider aws
 ```
 
 </details>
@@ -412,7 +472,7 @@ agency-quickdeploy launch "Build something" --auth-type oauth
 ### Railway Details
 
 **How Railway deployment works:**
-- Railway clones this repo and builds from `railway-agent/` directory
+- Railway clones this repo and builds from `agent-runner/` directory
 - Uses Nixpacks to auto-detect and install Python + Node.js
 - Agent runner starts and processes your prompt
 - No Docker needed - pure GitHub repo deployment

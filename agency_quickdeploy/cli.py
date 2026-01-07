@@ -1,7 +1,7 @@
 """CLI for agency-quickdeploy.
 
 This module provides the command-line interface for launching and managing
-continuous Claude Code agents on GCP or Railway.
+continuous Claude Code agents on GCP, AWS, Railway, or locally via Docker.
 """
 import click
 from rich.console import Console
@@ -16,10 +16,14 @@ console = Console()
 load_dotenv()
 
 
+# Supported providers
+PROVIDERS = ["gcp", "railway", "aws", "docker"]
+
+
 @click.group()
 @click.version_option(version="0.1.0")
 def cli():
-    """Agency QuickDeploy - Launch Claude Code agents on GCP or Railway with one command."""
+    """Agency QuickDeploy - Launch Claude Code agents on GCP, AWS, Railway, or Docker."""
     pass
 
 
@@ -38,15 +42,16 @@ def cli():
 )
 @click.option(
     "--provider", "-p",
-    type=click.Choice(["gcp", "railway"], case_sensitive=False),
-    help="Deployment provider: gcp (default) or railway"
+    type=click.Choice(PROVIDERS, case_sensitive=False),
+    help="Deployment provider: gcp (default), aws, railway, or docker"
 )
 def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_type, provider):
     """Launch a new agent with the given PROMPT.
 
     Example:
         agency-quickdeploy launch "Build a todo app with React"
-        agency-quickdeploy launch "Build an API" --provider railway
+        agency-quickdeploy launch "Build an API" --provider aws
+        agency-quickdeploy launch "Build an API" --provider docker
         agency-quickdeploy launch "Build an API" --auth-type oauth
     """
     try:
@@ -55,6 +60,10 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
         console.print(f"[red]Configuration error:[/red] {e}")
         if provider == "railway":
             console.print("\nSet RAILWAY_TOKEN environment variable.")
+        elif provider == "docker":
+            console.print("\nDocker provider requires Docker to be installed and running.")
+        elif provider == "aws":
+            console.print("\nConfigure AWS credentials: aws configure")
         else:
             console.print("\nSet QUICKDEPLOY_PROJECT environment variable to your GCP project ID.")
         raise SystemExit(1)
@@ -65,6 +74,13 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
         console.print(f"  Project: {config.gcp_project}")
         console.print(f"  Zone: {config.gcp_zone}")
         console.print(f"  Bucket: {config.gcs_bucket}")
+    elif config.provider.value == "aws":
+        console.print(f"  Region: {config.aws_region}")
+        if config.aws_bucket:
+            console.print(f"  Bucket: {config.aws_bucket}")
+    elif config.provider.value == "docker":
+        console.print(f"  Image: {config.docker_image}")
+        console.print(f"  Data dir: {config.docker_data_dir or '~/.agency'}")
     console.print(f"  Auth: {config.auth_type.value}")
 
     launcher = QuickDeployLauncher(config)
@@ -90,9 +106,16 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
     console.print(f"\nMonitor progress:")
     console.print(f"  agency-quickdeploy status {result.agent_id}")
     console.print(f"  agency-quickdeploy logs {result.agent_id}")
-    if no_shutdown and config.provider.value == "gcp":
-        console.print(f"\nSSH into VM:")
-        console.print(f"  gcloud compute ssh {result.agent_id} --zone={config.gcp_zone} --project={config.gcp_project}")
+    if no_shutdown:
+        if config.provider.value == "gcp":
+            console.print(f"\nSSH into VM:")
+            console.print(f"  gcloud compute ssh {result.agent_id} --zone={config.gcp_zone} --project={config.gcp_project}")
+        elif config.provider.value == "docker":
+            console.print(f"\nConnect to container:")
+            console.print(f"  docker exec -it {result.agent_id} bash")
+        elif config.provider.value == "aws":
+            console.print(f"\nSSH into instance (get IP with status command):")
+            console.print(f"  ssh -i <key.pem> ubuntu@<external_ip>")
     console.print(f"\nStop when done:")
     console.print(f"  agency-quickdeploy stop {result.agent_id}")
 
@@ -101,7 +124,7 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
 @click.argument("agent_id")
 @click.option(
     "--provider", "-p",
-    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    type=click.Choice(PROVIDERS, case_sensitive=False),
     help="Deployment provider to query"
 )
 def status(agent_id, provider):
@@ -109,7 +132,7 @@ def status(agent_id, provider):
 
     Example:
         agency-quickdeploy status agent-20260102-abc123
-        agency-quickdeploy status agent-123 --provider railway
+        agency-quickdeploy status agent-123 --provider docker
     """
     try:
         config = load_config(provider_override=provider)
@@ -141,11 +164,30 @@ def status(agent_id, provider):
     if agent_status.get("deployment_id"):
         console.print(f"  Deployment ID: {agent_status['deployment_id']}")
 
-    # Progress info (GCP)
+    # Docker-specific info
+    if agent_status.get("docker_status"):
+        console.print(f"  Docker Status: {agent_status['docker_status']}")
+
+    if agent_status.get("container_id"):
+        console.print(f"  Container ID: {agent_status['container_id']}")
+
+    if agent_status.get("logs_command"):
+        console.print(f"  View logs: {agent_status['logs_command']}")
+
+    if agent_status.get("ssh_command"):
+        console.print(f"  Connect: {agent_status['ssh_command']}")
+
+    # AWS-specific info
+    if agent_status.get("instance_id"):
+        console.print(f"  Instance ID: {agent_status['instance_id']}")
+
+    # Progress info
     if agent_status.get("feature_count"):
         completed = agent_status.get("features_completed", 0)
         total = agent_status["feature_count"]
         console.print(f"  Progress: {completed}/{total} features completed")
+    elif agent_status.get("features"):
+        console.print(f"  Progress: {agent_status['features']}")
 
 
 @cli.command()
@@ -153,7 +195,7 @@ def status(agent_id, provider):
 @click.option("--follow", "-f", is_flag=True, help="Follow log output (not implemented)")
 @click.option(
     "--provider", "-p",
-    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    type=click.Choice(PROVIDERS, case_sensitive=False),
     help="Deployment provider to query"
 )
 def logs(agent_id, follow, provider):
@@ -161,7 +203,7 @@ def logs(agent_id, follow, provider):
 
     Example:
         agency-quickdeploy logs agent-20260102-abc123
-        agency-quickdeploy logs agent-123 --provider railway
+        agency-quickdeploy logs agent-123 --provider docker
     """
     try:
         config = load_config(provider_override=provider)
@@ -182,7 +224,7 @@ def logs(agent_id, follow, provider):
 @click.argument("agent_id")
 @click.option(
     "--provider", "-p",
-    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    type=click.Choice(PROVIDERS, case_sensitive=False),
     help="Deployment provider"
 )
 @click.confirmation_option(prompt="Are you sure you want to stop this agent?")
@@ -191,7 +233,7 @@ def stop(agent_id, provider):
 
     Example:
         agency-quickdeploy stop agent-20260102-abc123
-        agency-quickdeploy stop agent-123 --provider railway
+        agency-quickdeploy stop agent-123 --provider docker
     """
     try:
         config = load_config(provider_override=provider)
@@ -212,7 +254,7 @@ def stop(agent_id, provider):
 @cli.command("list")
 @click.option(
     "--provider", "-p",
-    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    type=click.Choice(PROVIDERS, case_sensitive=False),
     help="Deployment provider to list"
 )
 def list_agents(provider):
@@ -220,7 +262,7 @@ def list_agents(provider):
 
     Example:
         agency-quickdeploy list
-        agency-quickdeploy list --provider railway
+        agency-quickdeploy list --provider docker
     """
     try:
         config = load_config(provider_override=provider)
@@ -239,7 +281,7 @@ def list_agents(provider):
     table.add_column("Name", style="cyan")
     table.add_column("Status", style="green")
 
-    # Show URL for Railway, External IP for GCP
+    # Show different info based on provider
     if config.provider.value == "railway":
         table.add_column("URL")
         for agent in agents:
@@ -248,7 +290,25 @@ def list_agents(provider):
                 agent.get("status", ""),
                 agent.get("url", ""),
             )
-    else:
+    elif config.provider.value == "docker":
+        table.add_column("Container ID")
+        for agent in agents:
+            table.add_row(
+                agent.get("name", ""),
+                agent.get("status", ""),
+                agent.get("container_id", ""),
+            )
+    elif config.provider.value == "aws":
+        table.add_column("Instance ID")
+        table.add_column("External IP")
+        for agent in agents:
+            table.add_row(
+                agent.get("name", ""),
+                agent.get("status", ""),
+                agent.get("instance_id", ""),
+                agent.get("external_ip", ""),
+            )
+    else:  # gcp
         table.add_column("External IP")
         for agent in agents:
             table.add_row(
@@ -263,7 +323,7 @@ def list_agents(provider):
 @cli.command()
 @click.option(
     "--provider", "-p",
-    type=click.Choice(["gcp", "railway"], case_sensitive=False),
+    type=click.Choice(PROVIDERS, case_sensitive=False),
     help="Check configuration for specific provider"
 )
 def init(provider):
@@ -271,7 +331,7 @@ def init(provider):
 
     Example:
         agency-quickdeploy init
-        agency-quickdeploy init --provider railway
+        agency-quickdeploy init --provider docker
     """
     console.print("[cyan]Checking configuration...[/cyan]")
 
@@ -294,7 +354,8 @@ def init(provider):
             else:
                 console.print(f"[yellow]Warning: API key not found in Secret Manager[/yellow]")
                 console.print(f"  Create it with: gcloud secrets create {config.anthropic_api_key_secret} --data-file=<file>")
-        else:
+
+        elif config.provider.value == "railway":
             # Railway - validate token and test connectivity
             from agency_quickdeploy.providers.railway import (
                 validate_railway_token_format,
@@ -327,6 +388,71 @@ def init(provider):
             else:
                 console.print("  Project: Will be created on first launch")
 
+        elif config.provider.value == "docker":
+            # Docker - check Docker daemon and pull image
+            console.print(f"  Image: {config.docker_image}")
+            console.print(f"  Data dir: {config.docker_data_dir or '~/.agency'}")
+
+            console.print("\n[cyan]Checking Docker daemon...[/cyan]")
+            try:
+                from agency_quickdeploy.providers.docker import DockerProvider
+                docker_provider = DockerProvider(config)
+                docker_provider.docker  # Test connection
+                console.print(f"[green]Docker daemon is running![/green]")
+
+                # Try to pull the image
+                console.print(f"\n[cyan]Pulling agent image: {config.docker_image}...[/cyan]")
+                if docker_provider.pull_image():
+                    console.print(f"[green]Image ready![/green]")
+                else:
+                    console.print(f"[yellow]Could not pull image - will try again on launch[/yellow]")
+
+            except Exception as e:
+                console.print(f"[red]Docker error:[/red] {e}")
+                raise SystemExit(1)
+
+            # Check for credentials
+            import os
+            if os.environ.get("ANTHROPIC_API_KEY"):
+                console.print(f"[green]API key found in environment[/green]")
+            elif os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+                console.print(f"[green]OAuth token found in environment[/green]")
+            else:
+                console.print(f"[yellow]Warning: No credentials found[/yellow]")
+                console.print("  Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN environment variable")
+
+        elif config.provider.value == "aws":
+            # AWS - check credentials and region
+            console.print(f"  Region: {config.aws_region}")
+            console.print(f"  Instance type: {config.aws_instance_type}")
+            if config.aws_bucket:
+                console.print(f"  Bucket: {config.aws_bucket}")
+            else:
+                console.print(f"  Bucket: auto-generated on launch")
+
+            console.print("\n[cyan]Checking AWS credentials...[/cyan]")
+            try:
+                import boto3
+                sts = boto3.client('sts', region_name=config.aws_region)
+                identity = sts.get_caller_identity()
+                console.print(f"[green]AWS credentials valid![/green]")
+                console.print(f"  Account: {identity['Account']}")
+                console.print(f"  User ARN: {identity['Arn']}")
+            except Exception as e:
+                console.print(f"[red]AWS error:[/red] {e}")
+                console.print("\nConfigure AWS credentials with: aws configure")
+                raise SystemExit(1)
+
+            # Check for agent credentials
+            import os
+            if os.environ.get("ANTHROPIC_API_KEY"):
+                console.print(f"[green]API key found in environment[/green]")
+            elif os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+                console.print(f"[green]OAuth token found in environment[/green]")
+            else:
+                console.print(f"[yellow]Warning: No agent credentials found[/yellow]")
+                console.print("  Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN environment variable")
+
     except ConfigError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
         if provider == "railway":
@@ -334,6 +460,18 @@ def init(provider):
             console.print("  RAILWAY_TOKEN - Railway API token (get from railway.com/account/tokens)")
             console.print("\nOptional:")
             console.print("  RAILWAY_PROJECT_ID - Use existing project (creates new if not set)")
+        elif provider == "docker":
+            console.print("\nRequired for Docker:")
+            console.print("  Docker must be installed and running")
+            console.print("\nOptional:")
+            console.print("  AGENCY_DATA_DIR - Local data directory (default: ~/.agency)")
+            console.print("  AGENCY_DOCKER_IMAGE - Custom Docker image")
+        elif provider == "aws":
+            console.print("\nRequired for AWS:")
+            console.print("  AWS credentials (aws configure)")
+            console.print("\nOptional:")
+            console.print("  AWS_REGION - AWS region (default: us-east-1)")
+            console.print("  AWS_BUCKET - S3 bucket for state (auto-generated if not set)")
         else:
             console.print("\nRequired for GCP:")
             console.print("  QUICKDEPLOY_PROJECT - GCP project ID")

@@ -61,9 +61,14 @@ class QuickDeployConfig:
         auth_type: Authentication type (api_key or oauth)
         anthropic_api_key_secret: Secret Manager secret name for API key
         oauth_credentials_secret: Secret Manager secret name for OAuth credentials
-        provider: Deployment provider (gcp or railway)
+        provider: Deployment provider (gcp, railway, aws, or docker)
         railway_token: Railway API token (required for railway provider)
         railway_project_id: Railway project ID (auto-created if not set)
+        aws_region: AWS region (required for AWS provider)
+        aws_bucket: S3 bucket for state/logs (auto-generated if not set)
+        aws_instance_type: EC2 instance type (default: t3.medium)
+        docker_data_dir: Local directory for Docker agent data (default: ~/.agency)
+        docker_image: Docker image for agent container
     """
 
     gcp_project: Optional[str] = None
@@ -76,6 +81,13 @@ class QuickDeployConfig:
     provider: ProviderType = ProviderType.GCP
     railway_token: Optional[str] = None
     railway_project_id: Optional[str] = None
+    # AWS-specific settings
+    aws_region: str = "us-east-1"
+    aws_bucket: Optional[str] = None
+    aws_instance_type: str = "t3.medium"
+    # Docker-specific settings
+    docker_data_dir: Optional[str] = None  # Default: ~/.agency
+    docker_image: str = "ghcr.io/wesleyzhao/agency-agent:latest"
 
     @property
     def gcp_region(self) -> str:
@@ -113,6 +125,12 @@ class QuickDeployConfig:
             # Validate Railway-specific fields
             if not self.railway_token:
                 errors.append("RAILWAY_TOKEN is required for Railway provider")
+        elif self.provider == ProviderType.AWS:
+            # AWS provider has no strict requirements - uses default credentials
+            pass
+        elif self.provider == ProviderType.DOCKER:
+            # Docker provider has no strict requirements - uses local Docker daemon
+            pass
 
         return errors
 
@@ -124,7 +142,7 @@ def load_config(
     """Load configuration from environment variables.
 
     Environment variables:
-        QUICKDEPLOY_PROVIDER: Deployment provider (gcp or railway)
+        QUICKDEPLOY_PROVIDER: Deployment provider (gcp, railway, aws, or docker)
         QUICKDEPLOY_PROJECT: GCP project ID
         QUICKDEPLOY_ZONE: GCP zone (default: us-central1-a)
         QUICKDEPLOY_BUCKET: GCS bucket name (auto-generated if not set)
@@ -133,6 +151,11 @@ def load_config(
         GOOGLE_CLOUD_PROJECT: Fallback for project if QUICKDEPLOY_PROJECT not set
         RAILWAY_TOKEN: Railway API token (required for railway provider)
         RAILWAY_PROJECT_ID: Railway project ID (optional, auto-created if not set)
+        AWS_REGION: AWS region (default: us-east-1)
+        AWS_BUCKET or AGENCY_AWS_BUCKET: S3 bucket name
+        AWS_INSTANCE_TYPE: EC2 instance type (default: t3.medium)
+        AGENCY_DATA_DIR: Local directory for Docker agent data (default: ~/.agency)
+        AGENCY_DOCKER_IMAGE: Docker image for agent container
 
     Args:
         auth_type_override: Override auth type from CLI (takes precedence over env)
@@ -150,7 +173,7 @@ def load_config(
         provider = ProviderType(provider_str.lower())
     except ValueError:
         raise ConfigError(
-            f"Invalid provider: {provider_str}. Must be 'gcp' or 'railway'."
+            f"Invalid provider: {provider_str}. Must be 'gcp', 'railway', 'aws', or 'docker'."
         )
 
     # Get GCP-specific settings
@@ -163,6 +186,15 @@ def load_config(
     railway_token = os.environ.get("RAILWAY_TOKEN")
     railway_project_id = os.environ.get("RAILWAY_PROJECT_ID")
 
+    # Get AWS-specific settings
+    aws_region = os.environ.get("AWS_REGION", "us-east-1")
+    aws_bucket = os.environ.get("AWS_BUCKET") or os.environ.get("AGENCY_AWS_BUCKET")
+    aws_instance_type = os.environ.get("AWS_INSTANCE_TYPE", "t3.medium")
+
+    # Get Docker-specific settings
+    docker_data_dir = os.environ.get("AGENCY_DATA_DIR")
+    docker_image = os.environ.get("AGENCY_DOCKER_IMAGE", "ghcr.io/wesleyzhao/agency-agent:latest")
+
     # Validate required fields based on provider
     if provider == ProviderType.GCP and not project:
         raise ConfigError(
@@ -172,6 +204,7 @@ def load_config(
         raise ConfigError(
             "Railway token not configured. Set RAILWAY_TOKEN environment variable."
         )
+    # AWS and Docker providers don't have strict requirements
 
     # Determine auth type: CLI override > env var > default
     auth_type_str = auth_type_override or os.environ.get("QUICKDEPLOY_AUTH_TYPE", "api_key")
@@ -190,6 +223,11 @@ def load_config(
         provider=provider,
         railway_token=railway_token,
         railway_project_id=railway_project_id,
+        aws_region=aws_region,
+        aws_bucket=aws_bucket,
+        aws_instance_type=aws_instance_type,
+        docker_data_dir=docker_data_dir,
+        docker_image=docker_image,
     )
 
     if bucket:
