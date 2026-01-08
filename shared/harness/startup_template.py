@@ -371,19 +371,33 @@ def load_progress(project_dir: Path, max_kb: int = 20) -> str:
     return content
 
 
-def load_context(project_dir: Path) -> str:
-    """Load persistent architectural context (Anand-style external memory).
+def load_context(project_dir: Path, max_kb: int = 20) -> str:
+    """Load persistent architectural context, truncating if too large.
 
     Args:
         project_dir: Directory containing CONTEXT.md
+        max_kb: Maximum kilobytes to load (default: 20KB)
 
     Returns:
-        Architectural context string, or empty string if file doesn't exist
+        Architectural context string, truncated if necessary
     """
     context_file = project_dir / "CONTEXT.md"
-    if context_file.exists():
-        return context_file.read_text()
-    return ""
+    if not context_file.exists():
+        return ""
+
+    content = context_file.read_text()
+    max_bytes = max_kb * 1024
+
+    if len(content) > max_bytes:
+        # Keep only recent context (last ~20KB)
+        truncated = content[-max_bytes:]
+        # Find first newline to avoid cutting mid-line
+        first_newline = truncated.find('\\n')
+        if first_newline > 0:
+            truncated = truncated[first_newline+1:]
+        return f"[Earlier context truncated - keeping last {max_kb}KB]\\n\\n{truncated}"
+
+    return content
 
 
 def sync_to_gcs(workspace: Path, bucket: str, agent_id: str):
