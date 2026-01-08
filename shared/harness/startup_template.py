@@ -363,10 +363,10 @@ def load_progress(project_dir: Path, max_kb: int = 20) -> str:
         # Simple approach: truncate at newline boundary
         truncated = content[-max_bytes:]
         # Find first newline to avoid cutting mid-sentence
-        first_newline = truncated.find('\n')
+        first_newline = truncated.find('\\n')
         if first_newline > 0:
             truncated = truncated[first_newline+1:]
-        return f"[Earlier progress truncated - see git history for full context]\n\n{truncated}"
+        return f"[Earlier progress truncated - see git history for full context]\\n\\n{truncated}"
 
     return content
 
