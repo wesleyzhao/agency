@@ -1,0 +1,154 @@
+{
+  "features": [
+    {
+      "id": 1,
+      "description": "Web scraping module to search for NFL MVP voter information across multiple sources",
+      "status": "completed"
+    },
+    {
+      "id": 2,
+      "description": "Reddit API integration to search for posts/comments about MVP voters and their picks",
+      "status": "completed"
+    },
+    {
+      "id": 3,
+      "description": "Google News/web search integration to find articles mentioning voter selections",
+      "status": "completed"
+    },
+    {
+      "id": 4,
+      "description": "Database schema to store voter information (name, affiliation, outlet, social media handles)",
+      "status": "completed"
+    },
+    {
+      "id": 5,
+      "description": "Database schema to store publicly announced votes (voter_id, candidate, ranking, source URL, date)",
+      "status": "completed"
+    },
+    {
+      "id": 6,
+      "description": "Automated web crawler to periodically search for new voter announcements",
+      "status": "completed"
+    },
+    {
+      "id": 7,
+      "description": "URL deduplication and source tracking to avoid counting same announcement multiple times",
+      "status": "completed"
+    },
+    {
+      "id": 8,
+      "description": "Natural language processing to extract voter names and their MVP picks from text",
+      "status": "completed"
+    },
+    {
+      "id": 9,
+      "description": "Confidence scoring system for extracted information (high/medium/low confidence)",
+      "status": "completed"
+    },
+    {
+      "id": 10,
+      "description": "Manual entry interface for adding known voters and their votes",
+      "status": "completed"
+    },
+    {
+      "id": 11,
+      "description": "Dashboard showing list of all 50 AP voters (known and unknown)",
+      "status": "completed"
+    },
+    {
+      "id": 12,
+      "description": "Voter detail page showing their vote breakdown and source links",
+      "status": "completed"
+    },
+    {
+      "id": 13,
+      "description": "Summary statistics page (total voters found, votes disclosed, votes per candidate)",
+      "status": "completed"
+    },
+    {
+      "id": 14,
+      "description": "Search and filter functionality to find voters by name, outlet, or candidate voted for",
+      "status": "completed"
+    },
+    {
+      "id": 15,
+      "description": "Export functionality to download data as CSV/JSON",
+      "status": "completed"
+    },
+    {
+      "id": 16,
+      "description": "Source credibility tracking (official announcement vs speculation)",
+      "status": "completed"
+    },
+    {
+      "id": 17,
+      "description": "Historical voter database from previous years for reference",
+      "status": "completed"
+    },
+    {
+      "id": 18,
+      "description": "Notification system to alert when new voter information is found",
+      "status": "completed"
+    },
+    {
+      "id": 19,
+      "description": "API endpoints to query voter data programmatically",
+      "status": "completed"
+    },
+    {
+      "id": 20,
+      "description": "Rate limiting and caching for web scraping to avoid being blocked",
+      "status": "completed"
+    },
+    {
+      "id": 21,
+      "description": "Admin interface to verify/edit/approve automatically extracted information",
+      "status": "completed"
+    },
+    {
+      "id": 22,
+      "description": "Visualization showing vote distribution across candidates",
+      "status": "completed"
+    },
+    {
+      "id": 23,
+      "description": "Timeline view showing when votes were publicly announced",
+      "status": "completed"
+    },
+    {
+      "id": 24,
+      "description": "Integration with news aggregators to find recent MVP-related articles",
+      "status": "completed"
+    },
+    {
+      "id": 25,
+      "description": "Comprehensive logging system for all scraping and extraction activities",
+      "status": "completed"
+    },
+    {
+      "id": 26,
+      "description": "Initial research script to gather known voters from current season",
+      "status": "completed"
+    },
+    {
+      "id": 27,
+      "description": "Seed database with confirmed voters (Tom Brady, Mina Kimes, etc.)",
+      "status": "completed"
+    },
+    {
+      "id": 28,
+      "description": "Documentation on how to add new data sources and extend the scraper",
+      "status": "completed"
+    },
+    {
+      "id": 29,
+      "description": "Unit tests for NLP extraction and data validation",
+      "status": "completed"
+    },
+    {
+      "id": 30,
+      "description": "Responsive web UI that works on mobile and desktop",
+      "status": "pending"
+    }
+  ]
+}
