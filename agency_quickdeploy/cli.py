@@ -34,7 +34,7 @@ def cli():
 @click.option("--branch", "-b", help="Git branch to use")
 @click.option("--spot", is_flag=True, help="Use spot/preemptible instance (cheaper, GCP only)")
 @click.option("--max-iterations", "-m", type=int, default=0, help="Max iterations (0=unlimited)")
-@click.option("--no-shutdown", is_flag=True, help="Keep running after completion (for inspection)")
+@click.option("--shutdown/--no-shutdown", default=False, help="Auto-shutdown VM on completion (default: keep running)")
 @click.option(
     "--auth-type", "-a",
     type=click.Choice(["api_key", "oauth"], case_sensitive=False),
@@ -45,7 +45,7 @@ def cli():
     type=click.Choice(PROVIDERS, case_sensitive=False),
     help="Deployment provider: gcp (default), aws, railway, or docker"
 )
-def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_type, provider):
+def launch(prompt, name, repo, branch, spot, max_iterations, shutdown, auth_type, provider):
     """Launch a new agent with the given PROMPT.
 
     Example:
@@ -53,6 +53,7 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
         agency-quickdeploy launch "Build an API" --provider aws
         agency-quickdeploy launch "Build an API" --provider docker
         agency-quickdeploy launch "Build an API" --auth-type oauth
+        agency-quickdeploy launch "Build an API" --shutdown  # auto-shutdown on completion
     """
     try:
         config = load_config(auth_type_override=auth_type, provider_override=provider)
@@ -67,6 +68,9 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
         else:
             console.print("\nSet QUICKDEPLOY_PROJECT environment variable to your GCP project ID.")
         raise SystemExit(1)
+
+    # Invert: shutdown=False means no_shutdown=True
+    no_shutdown = not shutdown
 
     console.print(f"[cyan]Launching agent...[/cyan]")
     console.print(f"  Provider: {config.provider.value}")
@@ -84,6 +88,10 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
         console.print(f"  Image: {config.docker_image}")
         console.print(f"  Data dir: {config.docker_data_dir or '~/.agency'}")
     console.print(f"  Auth: {config.auth_type.value}")
+    if shutdown:
+        console.print(f"  [yellow]Auto-shutdown:[/yellow] VM will shutdown on completion")
+    else:
+        console.print(f"  [green]No auto-shutdown:[/green] VM stays running after completion")
 
     launcher = QuickDeployLauncher(config)
     result = launcher.launch(
@@ -103,12 +111,10 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
     console.print(f"\n[green]Agent launched successfully![/green]")
     console.print(f"  Agent ID: {result.agent_id}")
     console.print(f"  Status: {result.status}")
-    if no_shutdown:
-        console.print(f"  [yellow]NO_SHUTDOWN mode:[/yellow] Will stay running after completion")
     console.print(f"\nMonitor progress:")
     console.print(f"  agency-quickdeploy status {result.agent_id}")
     console.print(f"  agency-quickdeploy logs {result.agent_id}")
-    if no_shutdown:
+    if not shutdown:
         if config.provider.value == "gcp":
             console.print(f"\nSSH into VM:")
             console.print(f"  gcloud compute ssh {result.agent_id} --zone={config.gcp_zone} --project={config.gcp_project}")

@@ -188,6 +188,25 @@ if [ ! -f "$WORKDIR/feature_list.json" ]; then
 FEATURE_EOF"
 fi
 
+# === Create initial CONTEXT.md ===
+# Persistent architectural context file (inspired by Anand Chowdhary's continuous-claude)
+# Agents use this to maintain high-level design decisions across sessions
+if [ ! -f "$WORKDIR/CONTEXT.md" ]; then
+    log "Creating initial CONTEXT.md..."
+    sudo -u agent bash -c "cat > $WORKDIR/CONTEXT.md << 'CONTEXT_EOF'
+# Architectural Context
+
+This file maintains high-level architectural decisions and design patterns across sessions.
+Keep this concise - focus on:
+- Key architectural choices
+- Important design patterns
+- Critical constraints
+- Major refactoring decisions
+
+Update this when making significant architectural changes.
+CONTEXT_EOF"
+fi
+
 # === Save Prompt/App Spec ===
 cat > $WORKSPACE/app_spec.txt << 'PROMPT_END'
 __PROMPT__
@@ -280,8 +299,17 @@ Create feature_list.json with this structure:
 Start by reading feature_list.json and populating it with all required features."""
 
 
-def get_coding_prompt(app_spec: str, progress: str) -> str:
-    """Prompt for subsequent sessions - implements features."""
+def get_coding_prompt(app_spec: str, progress: str, context: str = "") -> str:
+    """Prompt for subsequent sessions - implements features.
+
+    Args:
+        app_spec: Application specification/requirements
+        progress: Recent progress notes (bounded to prevent ARG_MAX overflow)
+        context: Persistent architectural context from CONTEXT.md
+
+    Returns:
+        Prompt string for coding agent
+    """
     return f"""You are an AI coding agent continuing work on an application.
 
 ## Your Task
@@ -292,10 +320,13 @@ def get_coding_prompt(app_spec: str, progress: str) -> str:
 5. Update feature_list.json to mark it as "completed"
 6. Commit your changes with a descriptive message
 
-## Application Specification
+## Persistent Architectural Context
+{context}
+
+## Application Specification (Initial Requirements)
 {app_spec}
 
-## Previous Progress
+## Recent Progress (Last 20KB)
 {progress}
 
 ## Important Rules
@@ -303,25 +334,143 @@ def get_coding_prompt(app_spec: str, progress: str) -> str:
 - Test your work before marking complete
 - Always commit after completing a feature
 - Update claude-progress.txt with what you did
+- Update CONTEXT.md if you make major architectural decisions (keep it concise!)
+- If all features complete, output: CONTINUOUS_CLAUDE_PROJECT_COMPLETE
 
 Start by reading feature_list.json and picking the next pending feature."""
 
 
-def load_progress(project_dir: Path) -> str:
-    """Load progress notes from previous sessions."""
+def load_progress(project_dir: Path, max_kb: int = 20) -> str:
+    """Load recent progress, truncating if too large to prevent ARG_MAX overflow.
+
+    Args:
+        project_dir: Directory containing claude-progress.txt
+        max_kb: Maximum kilobytes to load (default: 20KB)
+
+    Returns:
+        Progress notes string, truncated if necessary
+    """
     progress_file = project_dir / "claude-progress.txt"
-    if progress_file.exists():
-        return progress_file.read_text()
-    return "No previous progress."
+
+    if not progress_file.exists():
+        return "No previous progress."
+
+    content = progress_file.read_text()
+    max_bytes = max_kb * 1024
+
+    if len(content) > max_bytes:
+        # Keep only recent progress (last ~20KB)
+        # Simple approach: truncate at newline boundary
+        truncated = content[-max_bytes:]
+        # Find first newline to avoid cutting mid-sentence
+        first_newline = truncated.find('\\n')
+        if first_newline > 0:
+            truncated = truncated[first_newline+1:]
+        return f"[Earlier progress truncated - see git history for full context]\\n\\n{truncated}"
+
+    return content
+
+
+def load_context(project_dir: Path, max_kb: int = 20) -> str:
+    """Load persistent architectural context, archiving if too large.
+
+    When CONTEXT.md exceeds max_kb, it is archived to context-session-N.md
+    and a fresh CONTEXT.md is created with references to the archives.
+    This preserves all context history while keeping the active file small.
+
+    Args:
+        project_dir: Directory containing CONTEXT.md
+        max_kb: Maximum kilobytes before archiving (default: 20KB)
+
+    Returns:
+        Architectural context string from current CONTEXT.md
+    """
+    context_file = project_dir / "CONTEXT.md"
+    if not context_file.exists():
+        return ""
+
+    content = context_file.read_text()
+    max_bytes = max_kb * 1024
+
+    if len(content) > max_bytes:
+        # Archive the current context and start fresh
+        content = _archive_and_rotate_context(project_dir, content, max_kb)
+
+    return content
+
+
+def _archive_and_rotate_context(project_dir: Path, content: str, max_kb: int) -> str:
+    """Archive current CONTEXT.md and create a fresh one with references.
+
+    Args:
+        project_dir: Directory containing context files
+        content: Current CONTEXT.md content to archive
+        max_kb: Size limit that triggered archival
+
+    Returns:
+        Content of the new CONTEXT.md
+    """
+    import glob
+
+    # Find existing archives to determine next number
+    archive_pattern = str(project_dir / "context-session-*.md")
+    existing_archives = sorted(glob.glob(archive_pattern))
+
+    if existing_archives:
+        # Extract the highest number
+        last_archive = existing_archives[-1]
+        try:
+            last_num = int(last_archive.split("-")[-1].replace(".md", ""))
+            next_num = last_num + 1
+        except ValueError:
+            next_num = len(existing_archives) + 1
+    else:
+        next_num = 1
+
+    # Archive current context
+    archive_file = project_dir / f"context-session-{next_num}.md"
+    archive_file.write_text(content)
+
+    # Build list of all archives for the header
+    all_archives = [f"context-session-{i}.md" for i in range(1, next_num + 1)]
+    archive_list = ", ".join(all_archives)
+
+    # Create fresh CONTEXT.md with header referencing archives
+    new_context = f"""# Architectural Context
+
+## Previous Sessions
+The following archive files contain context from earlier sessions:
+{archive_list}
+
+Read these files if you need historical context about architectural decisions,
+design patterns, or earlier implementation details.
+
+## Current Session (Session {next_num + 1})
+
+This is a fresh context file. Key information to preserve:
+- Update this file with important architectural decisions
+- Document design patterns and constraints
+- Note any major refactoring or changes
+
+---
+
+"""
+
+    context_file = project_dir / "CONTEXT.md"
+    context_file.write_text(new_context)
+
+    return new_context
 
 
 def sync_to_gcs(workspace: Path, bucket: str, agent_id: str):
     """Sync progress files to GCS."""
     import subprocess
+    import glob
 
     files_to_sync = [
         "feature_list.json",
         "claude-progress.txt",
+        "CONTEXT.md",  # Current context
     ]
 
     for fname in files_to_sync:
@@ -332,6 +481,16 @@ def sync_to_gcs(workspace: Path, bucket: str, agent_id: str):
                 ["gsutil", "-q", "cp", str(fpath), dest],
                 capture_output=True
             )
+
+    # Sync context archive files (context-session-*.md)
+    archive_pattern = str(workspace / "context-session-*.md")
+    for archive_path in glob.glob(archive_pattern):
+        fname = Path(archive_path).name
+        dest = f"gs://{bucket}/agents/{agent_id}/{fname}"
+        subprocess.run(
+            ["gsutil", "-q", "cp", archive_path, dest],
+            capture_output=True
+        )
 
     # Also sync the log
     log_path = Path("/var/log/agent.log")
@@ -387,8 +546,9 @@ async def run_agent(
             prompt = get_initializer_prompt(app_spec)
         else:
             log("Continuing from previous session...")
-            progress = load_progress(project_dir)
-            prompt = get_coding_prompt(app_spec, progress)
+            progress = load_progress(project_dir, max_kb=20)  # Bounded to prevent ARG_MAX
+            context = load_context(project_dir)  # Load persistent architectural notes
+            prompt = get_coding_prompt(app_spec, progress, context)
 
             # Check if all features are complete
             feature_file = project_dir / "feature_list.json"
@@ -404,7 +564,13 @@ async def run_agent(
                     pass
 
         try:
-            await run_session(prompt, project_dir)
+            response = await run_session(prompt, project_dir)
+
+            # Check for completion signal (Anand-style)
+            if "CONTINUOUS_CLAUDE_PROJECT_COMPLETE" in response:
+                log("Agent signaled completion!")
+                break
+
         except Exception as e:
             log(f"Session error: {e}")
 
@@ -463,6 +629,11 @@ log "Starting GCS sync background job..."
         sleep 60
         gsutil -q cp $WORKDIR/feature_list.json gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
         gsutil -q cp $WORKDIR/claude-progress.txt gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
+        gsutil -q cp $WORKDIR/CONTEXT.md gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
+        # Sync context archive files
+        for f in $WORKDIR/context-session-*.md; do
+            [ -e "$f" ] && gsutil -q cp "$f" gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
+        done
         gsutil -q cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/ 2>/dev/null || true
     done
 ) &
@@ -517,6 +688,11 @@ kill $SYNC_PID 2>/dev/null || true
 log "Final GCS sync..."
 gsutil -q cp $WORKDIR/feature_list.json gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
 gsutil -q cp $WORKDIR/claude-progress.txt gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
+gsutil -q cp $WORKDIR/CONTEXT.md gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
+# Sync context archive files
+for f in $WORKDIR/context-session-*.md; do
+    [ -e "$f" ] && gsutil -q cp "$f" gs://$BUCKET/agents/$AGENT_ID/ 2>/dev/null || true
+done
 gsutil -q cp /var/log/agent.log gs://$BUCKET/agents/$AGENT_ID/logs/ 2>/dev/null || true
 
 # Report final status
