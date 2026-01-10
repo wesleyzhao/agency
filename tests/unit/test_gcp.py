@@ -2,73 +2,49 @@
 import pytest
 from unittest.mock import patch, Mock, MagicMock
 
+from agentctl.shared.gcp import get_project_id, verify_auth, GCPError
 
-def test_get_project_id_from_service_account(tmp_path):
+
+def test_get_project_id_from_service_account():
     """Test getting project ID from service account file."""
-    import json
+    mock_credentials = MagicMock()
 
-    # Create a mock service account file
-    sa_file = tmp_path / "sa.json"
-    sa_data = {
-        "type": "service_account",
-        "project_id": "test-project",
-        "private_key_id": "key123",
-        "private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIE...fake...key\n-----END RSA PRIVATE KEY-----\n",
-        "client_email": "test@test-project.iam.gserviceaccount.com",
-        "client_id": "123456789",
-    }
-    sa_file.write_text(json.dumps(sa_data))
+    with patch("agentctl.shared.gcp.get_credentials") as mock_get_creds:
+        mock_get_creds.return_value = (mock_credentials, "test-project")
 
-    with patch("agentctl.shared.gcp.service_account.Credentials") as mock_creds:
-        mock_creds.from_service_account_file.return_value = MagicMock()
-
-        from agentctl.shared.gcp import get_project_id
-        result = get_project_id(str(sa_file))
+        result = get_project_id("/fake/path/sa.json")
         assert result == "test-project"
+        mock_get_creds.assert_called_once_with("/fake/path/sa.json")
 
 
 def test_get_project_id_no_credentials():
     """Test get_project_id returns None when no credentials."""
-    with patch("agentctl.shared.gcp.google.auth.default") as mock_default:
-        from google.auth import exceptions
-        mock_default.side_effect = exceptions.DefaultCredentialsError("No creds")
+    with patch("agentctl.shared.gcp.get_credentials") as mock_get_creds:
+        mock_get_creds.side_effect = GCPError("No credentials")
 
-        from agentctl.shared.gcp import get_project_id
         result = get_project_id()
         assert result is None
 
 
-def test_verify_auth_success(tmp_path):
+def test_verify_auth_success():
     """Test verify_auth returns True with valid credentials."""
-    import json
+    mock_credentials = MagicMock()
+    # Mock the refresh method to succeed
+    mock_credentials.refresh = MagicMock()
 
-    sa_file = tmp_path / "sa.json"
-    sa_data = {
-        "type": "service_account",
-        "project_id": "test-project",
-        "private_key_id": "key123",
-        "private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIE...fake...key\n-----END RSA PRIVATE KEY-----\n",
-        "client_email": "test@test-project.iam.gserviceaccount.com",
-        "client_id": "123456789",
-    }
-    sa_file.write_text(json.dumps(sa_data))
+    with patch("agentctl.shared.gcp.get_credentials") as mock_get_creds:
+        mock_get_creds.return_value = (mock_credentials, "test-project")
 
-    with patch("agentctl.shared.gcp.service_account.Credentials") as mock_creds:
-        mock_cred_instance = MagicMock()
-        mock_creds.from_service_account_file.return_value = mock_cred_instance
-
-        from agentctl.shared.gcp import verify_auth
-        result = verify_auth(str(sa_file))
-        assert result is True
+        with patch("google.auth.transport.requests.Request"):
+            result = verify_auth("/fake/path/sa.json")
+            assert result is True
 
 
 def test_verify_auth_no_credentials():
     """Test verify_auth returns False when no credentials."""
-    with patch("agentctl.shared.gcp.google.auth.default") as mock_default:
-        from google.auth import exceptions
-        mock_default.side_effect = exceptions.DefaultCredentialsError("No creds")
+    with patch("agentctl.shared.gcp.get_credentials") as mock_get_creds:
+        mock_get_creds.side_effect = GCPError("No credentials")
 
-        from agentctl.shared.gcp import verify_auth
         result = verify_auth()
         assert result is False
 

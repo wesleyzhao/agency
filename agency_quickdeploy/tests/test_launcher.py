@@ -24,9 +24,9 @@ class TestLauncherInit:
 class TestLaunchAgent:
     """Tests for launching an agent."""
 
-    @patch("agency_quickdeploy.launcher.VMManager")
-    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
-    @patch("agency_quickdeploy.launcher.SecretManager")
+    @patch("agency_quickdeploy.providers.gcp.VMManager")
+    @patch("agency_quickdeploy.providers.gcp.QuickDeployStorage")
+    @patch("agency_quickdeploy.gcp.secrets.SecretManager")
     def test_launch_returns_result(
         self, mock_secret_class, mock_storage_class, mock_vm_class
     ):
@@ -55,9 +55,9 @@ class TestLaunchAgent:
         assert result.agent_id is not None
         assert result.status in ["launching", "running", "creating"]
 
-    @patch("agency_quickdeploy.launcher.VMManager")
-    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
-    @patch("agency_quickdeploy.launcher.SecretManager")
+    @patch("agency_quickdeploy.providers.gcp.VMManager")
+    @patch("agency_quickdeploy.providers.gcp.QuickDeployStorage")
+    @patch("agency_quickdeploy.gcp.secrets.SecretManager")
     def test_launch_generates_agent_id(
         self, mock_secret_class, mock_storage_class, mock_vm_class
     ):
@@ -84,9 +84,9 @@ class TestLaunchAgent:
 
         assert result1.agent_id != result2.agent_id
 
-    @patch("agency_quickdeploy.launcher.VMManager")
-    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
-    @patch("agency_quickdeploy.launcher.SecretManager")
+    @patch("agency_quickdeploy.providers.gcp.VMManager")
+    @patch("agency_quickdeploy.providers.gcp.QuickDeployStorage")
+    @patch("agency_quickdeploy.gcp.secrets.SecretManager")
     def test_launch_ensures_bucket_exists(
         self, mock_secret_class, mock_storage_class, mock_vm_class
     ):
@@ -116,8 +116,8 @@ class TestLaunchAgent:
 class TestAgentStatus:
     """Tests for getting agent status."""
 
-    @patch("agency_quickdeploy.launcher.VMManager")
-    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
+    @patch("agency_quickdeploy.providers.gcp.VMManager")
+    @patch("agency_quickdeploy.providers.gcp.QuickDeployStorage")
     def test_status_returns_dict(self, mock_storage_class, mock_vm_class):
         """Status should return agent status dict."""
         from agency_quickdeploy.launcher import QuickDeployLauncher
@@ -147,8 +147,8 @@ class TestAgentStatus:
 class TestStopAgent:
     """Tests for stopping an agent."""
 
-    @patch("agency_quickdeploy.launcher.VMManager")
-    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
+    @patch("agency_quickdeploy.providers.gcp.VMManager")
+    @patch("agency_quickdeploy.providers.gcp.QuickDeployStorage")
     def test_stop_deletes_vm(self, mock_storage_class, mock_vm_class):
         """Stop should delete the VM."""
         from agency_quickdeploy.launcher import QuickDeployLauncher
@@ -173,8 +173,8 @@ class TestStopAgent:
 class TestListAgents:
     """Tests for listing agents."""
 
-    @patch("agency_quickdeploy.launcher.VMManager")
-    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
+    @patch("agency_quickdeploy.providers.gcp.VMManager")
+    @patch("agency_quickdeploy.providers.gcp.QuickDeployStorage")
     def test_list_returns_agents(self, mock_storage_class, mock_vm_class):
         """List should return agent info from VMs."""
         from agency_quickdeploy.launcher import QuickDeployLauncher
@@ -201,9 +201,9 @@ class TestListAgents:
 class TestEnvVarApiKey:
     """Tests for environment variable API key support."""
 
-    @patch("agency_quickdeploy.launcher.VMManager")
-    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
-    @patch("agency_quickdeploy.launcher.SecretManager")
+    @patch("agency_quickdeploy.providers.gcp.VMManager")
+    @patch("agency_quickdeploy.providers.gcp.QuickDeployStorage")
+    @patch("agency_quickdeploy.gcp.secrets.SecretManager")
     @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test-from-env"})
     def test_uses_env_var_api_key_when_set(
         self, mock_secret_class, mock_storage_class, mock_vm_class
@@ -229,9 +229,9 @@ class TestEnvVarApiKey:
         # Should still create VM successfully
         assert result.status in ["launching", "running", "creating"]
 
-    @patch("agency_quickdeploy.launcher.VMManager")
-    @patch("agency_quickdeploy.launcher.QuickDeployStorage")
-    @patch("agency_quickdeploy.launcher.SecretManager")
+    @patch("agency_quickdeploy.providers.gcp.VMManager")
+    @patch("agency_quickdeploy.providers.gcp.QuickDeployStorage")
+    @patch("agency_quickdeploy.gcp.secrets.SecretManager")
     @patch.dict("os.environ", {}, clear=True)
     def test_falls_back_to_secret_manager_when_no_env_var(
         self, mock_secret_class, mock_storage_class, mock_vm_class

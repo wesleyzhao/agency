@@ -183,3 +183,22 @@ class Credentials:
             metadata["oauth-credentials"] = generate_credentials_json(self.oauth)
 
         return metadata
+
+    def get_env_vars(self) -> dict[str, str]:
+        """Generate environment variables for these credentials.
+
+        Used by Railway and other container-based providers.
+
+        Returns:
+            Dict of environment variable key-value pairs
+        """
+        env_vars = {"AUTH_TYPE": self.auth_type.value}
+
+        if self.auth_type == AuthType.API_KEY and self.api_key:
+            env_vars["ANTHROPIC_API_KEY"] = self.api_key
+        elif self.auth_type == AuthType.OAUTH and self.oauth:
+            env_vars["CLAUDE_CODE_OAUTH_TOKEN"] = self.oauth.access_token
+            # Also provide the full credentials JSON for agents that need it
+            env_vars["OAUTH_CREDENTIALS_JSON"] = generate_credentials_json(self.oauth)
+
+        return env_vars

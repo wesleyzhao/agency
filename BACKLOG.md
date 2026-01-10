@@ -18,6 +18,61 @@
 
 ---
 
+## Recently Completed (2026-01-07)
+
+### Multi-Provider Support ✅
+Added support for deploying agents to multiple platforms:
+
+**Providers:**
+- **GCP** (existing) - Compute Engine VMs with GCS storage
+- **AWS** (new) - EC2 instances with S3 storage
+- **Docker** (new) - Local containers for free 24/7 agents
+- **Railway** (merged from feature branch) - Fast container deployments
+
+**Usage:**
+```bash
+agency-quickdeploy launch "task" --provider [gcp|aws|docker|railway]
+```
+
+**Known Limitations:**
+
+1. **AWS Provider:**
+   - **Security:** Claude credentials are passed via EC2 user-data (visible in AWS console and metadata service). Credentials are NOT logged but are present in the startup script. For higher security, use short-lived credentials or rotate after use.
+   - No IAM instance profile configured by default - S3 access requires default VPC or manual IAM setup
+   - No SSH key pair specified - use AWS Console to configure SSH access
+   - No security group created - uses default (may not allow SSH inbound)
+   - Spot instances work but interruption handling not implemented
+
+2. **Docker Provider:**
+   - Requires Docker daemon running locally
+   - No built-in log file persistence (uses Docker stdout)
+   - Container restart policy is "unless-stopped" - may restart unexpectedly
+   - Credentials are passed via container environment variables
+
+3. **GCP Provider:**
+   - Credentials passed via VM instance metadata (similar to AWS user-data)
+   - Supports GCP Secret Manager for more secure credential storage
+
+4. **General:**
+   - Agent-runner image (`ghcr.io/wesleyzhao/agency-agent:latest`) must be published before Docker/Railway work
+   - AMI IDs for AWS may become outdated over time
+
+**Credential Security Best Practices:**
+
+| Provider | How Credentials Are Passed | Security Level |
+|----------|---------------------------|----------------|
+| Docker | Container environment variables | Medium - visible to `docker inspect` |
+| GCP | Instance metadata or Secret Manager | Medium/High |
+| AWS | EC2 user-data | Medium - visible in AWS console |
+| Railway | Railway environment variables | Medium - encrypted at rest |
+
+For production use:
+- Use short-lived API keys and rotate after agent completes
+- For GCP, use Secret Manager (`--auth-type oauth` with secret in Secret Manager)
+- Consider using IAM roles where possible instead of static credentials
+
+---
+
 ## Recently Completed (2026-01-04)
 
 ### OAuth Token Support ✅
@@ -159,7 +214,13 @@ python -m agency_quickdeploy stop test-agent
 ```
 
 ### Key Files
-- `shared/harness/startup_template.py` - VM startup script template
+- `agency_quickdeploy/providers/base.py` - BaseProvider ABC and ProviderType enum
+- `agency_quickdeploy/providers/gcp.py` - GCP Compute Engine provider
+- `agency_quickdeploy/providers/aws.py` - AWS EC2 provider
+- `agency_quickdeploy/providers/docker.py` - Local Docker provider
+- `agency_quickdeploy/providers/railway.py` - Railway container provider
+- `agent-runner/main.py` - Agent runner for Docker/Railway containers
+- `shared/harness/startup_template.py` - VM startup script template (GCP)
 - `agency_quickdeploy/launcher.py` - Main orchestration logic
 - `agency_quickdeploy/auth.py` - API key and OAuth handling
 - `agency_quickdeploy/cli.py` - CLI commands

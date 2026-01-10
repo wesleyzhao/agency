@@ -1,0 +1,15 @@
+# Railway Config for agency-quickdeploy agent runner
+# This file tells Railway how to build and run the agent from the agent-runner/ subdirectory
+
+[build]
+# Use Nixpacks for auto-detection
+builder = "nixpacks"
+# Install Python dependencies from subdirectory + Claude Code CLI
+buildCommand = "pip install -r agent-runner/requirements.txt && npm install -g @anthropic-ai/claude-code"
+
+[deploy]
+# Run the agent runner from subdirectory
+startCommand = "python agent-runner/main.py"
+# Allow generous time for agent sessions
+healthcheckTimeout = 300
+restartPolicyType = "never"
