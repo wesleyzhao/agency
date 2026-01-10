@@ -78,6 +78,8 @@ def launch(prompt, name, repo, branch, spot, max_iterations, no_shutdown, auth_t
         console.print(f"  Region: {config.aws_region}")
         if config.aws_bucket:
             console.print(f"  Bucket: {config.aws_bucket}")
+        # Security note for AWS
+        console.print(f"  [yellow]Note:[/yellow] Credentials passed via EC2 user-data")
     elif config.provider.value == "docker":
         console.print(f"  Image: {config.docker_image}")
         console.print(f"  Data dir: {config.docker_data_dir or '~/.agency'}")

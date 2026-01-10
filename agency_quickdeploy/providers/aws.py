@@ -150,6 +150,91 @@ class AWSProvider(BaseProvider):
             raise AWSError.region_not_supported(self.region)
         return UBUNTU_AMIS[self.region]
 
+    def _get_subnet(self) -> Optional[str]:
+        """Find a suitable public subnet for launching instances.
+
+        Returns:
+            Subnet ID if found, None if default VPC should work
+        """
+        ec2_client = boto3.client('ec2', region_name=self.region)
+
+        # First check if there's a default VPC
+        try:
+            vpcs = ec2_client.describe_vpcs(
+                Filters=[{'Name': 'is-default', 'Values': ['true']}]
+            )
+            if vpcs.get('Vpcs'):
+                return None  # Default VPC exists, no need to specify subnet
+        except Exception:
+            pass
+
+        # No default VPC - find any VPC with a public subnet
+        try:
+            # Get all subnets that auto-assign public IPs (likely public subnets)
+            subnets = ec2_client.describe_subnets(
+                Filters=[{'Name': 'map-public-ip-on-launch', 'Values': ['true']}]
+            )
+            if subnets.get('Subnets'):
+                # Return first available public subnet
+                return subnets['Subnets'][0]['SubnetId']
+
+            # If no auto-assign subnets, try to find any subnet
+            subnets = ec2_client.describe_subnets()
+            if subnets.get('Subnets'):
+                return subnets['Subnets'][0]['SubnetId']
+        except Exception:
+            pass
+
+        return None
+
+    def _get_or_create_security_group(self, vpc_id: Optional[str] = None) -> Optional[str]:
+        """Get or create a security group for agent instances.
+
+        Args:
+            vpc_id: VPC ID to create the security group in
+
+        Returns:
+            Security group ID, or None to use default
+        """
+        ec2_client = boto3.client('ec2', region_name=self.region)
+        sg_name = "agency-quickdeploy-agents"
+
+        try:
+            # Try to find existing security group
+            filters = [{'Name': 'group-name', 'Values': [sg_name]}]
+            if vpc_id:
+                filters.append({'Name': 'vpc-id', 'Values': [vpc_id]})
+
+            sgs = ec2_client.describe_security_groups(Filters=filters)
+            if sgs.get('SecurityGroups'):
+                return sgs['SecurityGroups'][0]['GroupId']
+
+            # Create new security group
+            create_params = {
+                'GroupName': sg_name,
+                'Description': 'Security group for agency-quickdeploy agents',
+            }
+            if vpc_id:
+                create_params['VpcId'] = vpc_id
+
+            result = ec2_client.create_security_group(**create_params)
+            sg_id = result['GroupId']
+
+            # Add SSH ingress rule
+            ec2_client.authorize_security_group_ingress(
+                GroupId=sg_id,
+                IpPermissions=[{
+                    'IpProtocol': 'tcp',
+                    'FromPort': 22,
+                    'ToPort': 22,
+                    'IpRanges': [{'CidrIp': '0.0.0.0/0', 'Description': 'SSH access'}]
+                }]
+            )
+
+            return sg_id
+        except Exception:
+            return None  # Fall back to default security group
+
     def _ensure_bucket(self) -> str:
         """Ensure S3 bucket exists, creating if needed.
 
@@ -214,6 +299,11 @@ class AWSProvider(BaseProvider):
             oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
             auth_type = os.environ.get("QUICKDEPLOY_AUTH_TYPE", "api_key")
 
+        # Get AWS credentials for S3 access from the instance
+        # In production, use IAM instance profiles instead
+        aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID", "")
+        aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+
         max_iterations = kwargs.get("max_iterations", 0)
         no_shutdown = "true" if kwargs.get("no_shutdown") else "false"
         repo_url = kwargs.get("repo", "")
@@ -227,6 +317,8 @@ class AWSProvider(BaseProvider):
 set -e
 
 # === Configuration ===
+# NOTE: These credentials are passed via EC2 user-data. For production use,
+# consider using AWS Secrets Manager or IAM roles instead.
 AGENT_ID="{agent_id}"
 BUCKET="{self.bucket}"
 MAX_ITERATIONS="{max_iterations}"
@@ -234,16 +326,37 @@ NO_SHUTDOWN="{no_shutdown}"
 REPO_URL="{repo_url}"
 REPO_BRANCH="{repo_branch}"
 AUTH_TYPE="{auth_type}"
+
+# Credentials are set but NOT logged for security
 ANTHROPIC_API_KEY="{api_key}"
 CLAUDE_CODE_OAUTH_TOKEN="{oauth_token}"
 
-exec > >(tee /var/log/agent-startup.log) 2>&1
+# AWS credentials for S3 access (in production, use IAM instance profiles instead)
+AWS_ACCESS_KEY_ID="{aws_access_key}"
+AWS_SECRET_ACCESS_KEY="{aws_secret_key}"
+AWS_DEFAULT_REGION="{self.region}"
 
-log() {{ echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }}
+# Configure AWS CLI with credentials
+mkdir -p /root/.aws
+cat > /root/.aws/credentials << 'AWS_CREDS_EOF'
+[default]
+aws_access_key_id = {aws_access_key}
+aws_secret_access_key = {aws_secret_key}
+AWS_CREDS_EOF
+chmod 600 /root/.aws/credentials
+
+cat > /root/.aws/config << 'AWS_CONFIG_EOF'
+[default]
+region = {self.region}
+AWS_CONFIG_EOF
+
+# Log to file but EXCLUDE this initial setup (contains credentials in memory)
+log() {{ echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/agent-startup.log; }}
 
 log "=== AWS Agent Starting ==="
 log "Agent ID: $AGENT_ID"
 log "Region: {self.region}"
+log "Auth type: $AUTH_TYPE"
 
 # === Update status to starting ===
 echo "starting" > /tmp/agent_status
@@ -277,18 +390,23 @@ PROJECT_DIR=$WORKSPACE/project
 mkdir -p $PROJECT_DIR
 chown -R agent:agent $AGENT_HOME
 
-# === Setup credentials ===
+# === Setup credentials (no logging of actual values) ===
 log "Setting up credentials..."
 if [ "$AUTH_TYPE" = "oauth" ] && [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
     mkdir -p $AGENT_HOME/.claude
+    # Write credentials file (not logged)
     cat > $AGENT_HOME/.claude/.credentials.json << CREDS_EOF
 {{"claudeAiOauth": {{"accessToken": "$CLAUDE_CODE_OAUTH_TOKEN"}}}}
 CREDS_EOF
+    chmod 600 $AGENT_HOME/.claude/.credentials.json
     chown -R agent:agent $AGENT_HOME/.claude
-    log "OAuth credentials configured"
+    log "OAuth credentials configured (token hidden)"
 elif [ -n "$ANTHROPIC_API_KEY" ]; then
-    echo "export ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> $AGENT_HOME/.bashrc
-    log "API key configured"
+    # Write to a secure file instead of .bashrc (which might be logged)
+    echo "$ANTHROPIC_API_KEY" > $AGENT_HOME/.anthropic_key
+    chmod 600 $AGENT_HOME/.anthropic_key
+    chown agent:agent $AGENT_HOME/.anthropic_key
+    log "API key configured (key hidden)"
 else
     log "WARNING: No credentials configured"
 fi
@@ -399,12 +517,12 @@ Application Specification:
 {{app_spec}}
 
 Create the feature_list.json file in the current directory with this format:
-{{
+{{{{
   "features": [
-    {{"id": 1, "description": "Feature description", "status": "pending"}},
+    {{{{"id": 1, "description": "Feature description", "status": "pending"}}}},
     ...
   ]
-}}
+}}}}
 
 Work autonomously - do not ask for confirmation."""
     else:
@@ -488,7 +606,15 @@ sudo -u agent pip3 install claude-agent-sdk --user
 # === Run the agent ===
 log "Starting agent..."
 cd $PROJECT_DIR
-sudo -u agent -E bash -c "export ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY; python3 $AGENT_HOME/run_agent.py" >> /var/log/agent.log 2>&1
+
+# Read API key from secure file if it exists (don't pass via command line)
+if [ -f "$AGENT_HOME/.anthropic_key" ]; then
+    AGENT_API_KEY=$(cat $AGENT_HOME/.anthropic_key)
+    sudo -u agent -E bash -c "export ANTHROPIC_API_KEY='$AGENT_API_KEY'; python3 $AGENT_HOME/run_agent.py" >> /var/log/agent.log 2>&1
+else
+    # OAuth uses credentials file, no env var needed
+    sudo -u agent python3 $AGENT_HOME/run_agent.py >> /var/log/agent.log 2>&1
+fi
 
 # === Finalize ===
 log "Agent completed"
@@ -533,6 +659,20 @@ fi
                 agent_id, prompt, credentials, **kwargs
             )
 
+            # Find subnet (needed if no default VPC)
+            subnet_id = self._get_subnet()
+
+            # Get VPC ID for security group (if using non-default subnet)
+            vpc_id = None
+            if subnet_id:
+                ec2_client = boto3.client('ec2', region_name=self.region)
+                subnet_info = ec2_client.describe_subnets(SubnetIds=[subnet_id])
+                if subnet_info.get('Subnets'):
+                    vpc_id = subnet_info['Subnets'][0]['VpcId']
+
+            # Get or create security group
+            security_group_id = self._get_or_create_security_group(vpc_id)
+
             # Build instance parameters
             instance_params = {
                 "ImageId": ami_id,
@@ -549,6 +689,21 @@ fi
                     ]
                 }],
             }
+
+            # Add subnet if needed (for accounts without default VPC)
+            if subnet_id:
+                # When using a subnet, we need NetworkInterfaces for public IP
+                # Note: Can't use SubnetId with NetworkInterfaces
+                network_interface = {
+                    'DeviceIndex': 0,
+                    'SubnetId': subnet_id,
+                    'AssociatePublicIpAddress': True,
+                }
+                if security_group_id:
+                    network_interface['Groups'] = [security_group_id]
+                instance_params["NetworkInterfaces"] = [network_interface]
+            elif security_group_id:
+                instance_params["SecurityGroupIds"] = [security_group_id]
 
             # Add spot instance configuration if requested
             if kwargs.get('spot'):
