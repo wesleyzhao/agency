@@ -168,6 +168,35 @@ When working on this codebase:
 3. The startup script embeds a Python agent runner - changes there affect all VMs
 4. OAuth and API key paths are separate - test both if changing auth
 
+### CI Integration Testing (Important for Major Changes)
+
+**When to run CI tests:**
+- After making changes to `agency_quickdeploy/`, `shared/harness/`, or startup scripts
+- Before merging significant PRs
+- When changing GCP infrastructure, VM setup, or deployment logic
+
+**CI Test Levels:**
+```bash
+# Level 1: Build/test on fresh VM (~45s) - run for any code changes
+python scripts/ci_test.py --level 1
+
+# Level 2: Deployment startup verification (~70s) - run for deployment changes
+python scripts/ci_test.py --level 2
+
+# Test with local uncommitted code
+python scripts/ci_test.py --level 1 --source local
+
+# Keep VM for debugging failures
+python scripts/ci_test.py --level 2 --no-cleanup
+```
+
+**What CI tests verify:**
+- Level 1: Fresh Ubuntu VM can clone repo, install deps, pass pytest
+- Level 2: Level 1 + agent VM launches successfully and reaches "running" state
+- Level 3: Level 1 + agent completes full task (runs to completion, ~5-10 min)
+
+See `scripts/README.md` for full documentation.
+
 ```bash
 # Agentctl: Requires running master server
 uvicorn agentctl.server.app:app --port 8000
