@@ -261,15 +261,20 @@ class RailwayProvider(BaseProvider):
             Project ID if found, None otherwise
         """
         try:
-            # Use 'projects' query instead of 'me' - works with all token types
+            # Query projects through workspaces - the root 'projects' query
+            # doesn't return workspace projects reliably
             result = self._graphql(
                 """
                 query {
-                    projects {
-                        edges {
-                            node {
-                                id
-                                name
+                    me {
+                        workspaces {
+                            projects {
+                                edges {
+                                    node {
+                                        id
+                                        name
+                                    }
+                                }
                             }
                         }
                     }
@@ -277,12 +282,14 @@ class RailwayProvider(BaseProvider):
                 """
             )
 
-            projects = result.get("data", {}).get("projects", {}).get("edges", [])
-            for edge in projects:
-                project = edge.get("node", {})
-                if project.get("name") == "agency-quickdeploy":
-                    self.project_id = project["id"]
-                    return project["id"]
+            workspaces = result.get("data", {}).get("me", {}).get("workspaces", [])
+            for workspace in workspaces:
+                projects = workspace.get("projects", {}).get("edges", [])
+                for edge in projects:
+                    project = edge.get("node", {})
+                    if project.get("name") == "agency-quickdeploy":
+                        self.project_id = project["id"]
+                        return project["id"]
 
             return None
         except Exception:
