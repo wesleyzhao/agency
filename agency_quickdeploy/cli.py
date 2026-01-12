@@ -10,6 +10,12 @@ from rich.table import Table
 from agency_quickdeploy.config import load_config, load_dotenv, ConfigError
 from agency_quickdeploy.launcher import QuickDeployLauncher
 
+# Import DockerError if available
+try:
+    from agency_quickdeploy.providers.docker import DockerError
+except ImportError:
+    DockerError = Exception  # Fallback if docker module not available
+
 console = Console()
 
 # Load .env file if it exists (before any commands run)
@@ -94,15 +100,19 @@ def launch(prompt, name, repo, branch, spot, max_iterations, shutdown, auth_type
         console.print(f"  [green]No auto-shutdown:[/green] VM stays running after completion")
 
     launcher = QuickDeployLauncher(config)
-    result = launcher.launch(
-        prompt=prompt,
-        name=name,
-        repo=repo,
-        branch=branch,
-        spot=spot,
-        max_iterations=max_iterations,
-        no_shutdown=no_shutdown,
-    )
+    try:
+        result = launcher.launch(
+            prompt=prompt,
+            name=name,
+            repo=repo,
+            branch=branch,
+            spot=spot,
+            max_iterations=max_iterations,
+            no_shutdown=no_shutdown,
+        )
+    except DockerError as e:
+        console.print(f"\n[red]Docker error:[/red]\n{e.message}")
+        raise SystemExit(1)
 
     if result.error:
         console.print(f"\n[red]Launch failed:[/red] {result.error}")
@@ -123,7 +133,7 @@ def launch(prompt, name, repo, branch, spot, max_iterations, shutdown, auth_type
             console.print(f"  docker exec -it {result.agent_id} bash")
         elif config.provider.value == "aws":
             console.print(f"\nSSH into instance (get IP with status command):")
-            console.print(f"  ssh -i <key.pem> ubuntu@<external_ip>")
+            console.print(f"  ssh -i ~/.agency/keys/{result.agent_id}.pem ubuntu@<external_ip>")
     console.print(f"\nStop when done:")
     console.print(f"  agency-quickdeploy stop {result.agent_id}")
 
@@ -149,7 +159,11 @@ def status(agent_id, provider):
         raise SystemExit(1)
 
     launcher = QuickDeployLauncher(config)
-    agent_status = launcher.status(agent_id)
+    try:
+        agent_status = launcher.status(agent_id)
+    except DockerError as e:
+        console.print(f"\n[red]Docker error:[/red]\n{e.message}")
+        raise SystemExit(1)
 
     console.print(f"\n[cyan]Agent Status: {agent_id}[/cyan]")
     console.print(f"  Provider: {config.provider.value}")
@@ -220,7 +234,11 @@ def logs(agent_id, follow, provider):
         raise SystemExit(1)
 
     launcher = QuickDeployLauncher(config)
-    log_content = launcher.logs(agent_id)
+    try:
+        log_content = launcher.logs(agent_id)
+    except DockerError as e:
+        console.print(f"\n[red]Docker error:[/red]\n{e.message}")
+        raise SystemExit(1)
 
     if log_content:
         console.print(log_content)
@@ -250,7 +268,11 @@ def stop(agent_id, provider):
         raise SystemExit(1)
 
     launcher = QuickDeployLauncher(config)
-    success = launcher.stop(agent_id)
+    try:
+        success = launcher.stop(agent_id)
+    except DockerError as e:
+        console.print(f"\n[red]Docker error:[/red]\n{e.message}")
+        raise SystemExit(1)
 
     if success:
         console.print(f"[green]Agent {agent_id} stopped successfully[/green]")
@@ -279,7 +301,11 @@ def list_agents(provider):
         raise SystemExit(1)
 
     launcher = QuickDeployLauncher(config)
-    agents = launcher.list_agents()
+    try:
+        agents = launcher.list_agents()
+    except DockerError as e:
+        console.print(f"\n[red]Docker error:[/red]\n{e.message}")
+        raise SystemExit(1)
 
     if not agents:
         console.print(f"[yellow]No agents found ({config.provider.value})[/yellow]")

@@ -14,8 +14,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # Install Claude CLI (required for claude-agent-sdk)
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create workspace directory
-RUN mkdir -p /workspace
+# Create non-root user for running Claude CLI
+# Claude CLI refuses --dangerously-skip-permissions when running as root
+RUN useradd -m -s /bin/bash agent && \
+    mkdir -p /workspace && \
+    chown -R agent:agent /workspace
 
 # Set working directory
 WORKDIR /app
@@ -26,9 +29,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY main.py .
+RUN chown -R agent:agent /app
 
 # Set environment
 ENV PYTHONUNBUFFERED=1
+ENV HOME=/home/agent
+
+# Switch to non-root user
+USER agent
 
 # Run the agent
 CMD ["python", "main.py"]

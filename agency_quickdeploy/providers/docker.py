@@ -8,6 +8,9 @@ State is stored in the local filesystem (~/.agency/agents/{agent_id}/).
 """
 
 import os
+import platform
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Optional, Any
 
@@ -26,6 +29,120 @@ from agency_quickdeploy.config import QuickDeployConfig
 from agency_quickdeploy.auth import Credentials
 
 
+def get_platform() -> str:
+    """Get the current platform: 'macos', 'linux', or 'windows'."""
+    system = platform.system().lower()
+    if system == "darwin":
+        return "macos"
+    elif system == "linux":
+        return "linux"
+    elif system == "windows":
+        return "windows"
+    return system
+
+
+def get_docker_install_instructions() -> str:
+    """Get platform-specific Docker installation instructions."""
+    plat = get_platform()
+
+    if plat == "macos":
+        # Check if Homebrew is available
+        has_brew = shutil.which("brew") is not None
+        if has_brew:
+            return (
+                "Docker is not installed. Install it with Homebrew:\n"
+                "  brew install --cask docker\n\n"
+                "Then open Docker Desktop from Applications to start it.\n\n"
+                "Or download Docker Desktop from: https://docker.com/products/docker-desktop"
+            )
+        return (
+            "Docker is not installed.\n"
+            "Download Docker Desktop from: https://docker.com/products/docker-desktop\n\n"
+            "Or install Homebrew first, then run:\n"
+            "  /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"\n"
+            "  brew install --cask docker"
+        )
+
+    elif plat == "linux":
+        # Detect distro for specific instructions
+        distro = ""
+        try:
+            with open("/etc/os-release") as f:
+                for line in f:
+                    if line.startswith("ID="):
+                        distro = line.strip().split("=")[1].strip('"').lower()
+                        break
+        except Exception:
+            pass
+
+        if distro in ("ubuntu", "debian"):
+            return (
+                "Docker is not installed. Install it with:\n"
+                "  curl -fsSL https://get.docker.com | sh\n"
+                "  sudo usermod -aG docker $USER\n"
+                "  newgrp docker\n\n"
+                "Or use apt:\n"
+                "  sudo apt-get update\n"
+                "  sudo apt-get install -y docker.io\n"
+                "  sudo usermod -aG docker $USER\n"
+                "  newgrp docker"
+            )
+        elif distro in ("fedora", "centos", "rhel"):
+            return (
+                "Docker is not installed. Install it with:\n"
+                "  curl -fsSL https://get.docker.com | sh\n"
+                "  sudo usermod -aG docker $USER\n"
+                "  newgrp docker\n\n"
+                "Or use dnf:\n"
+                "  sudo dnf install -y docker\n"
+                "  sudo systemctl enable --now docker\n"
+                "  sudo usermod -aG docker $USER\n"
+                "  newgrp docker"
+            )
+        else:
+            return (
+                "Docker is not installed. Install it with:\n"
+                "  curl -fsSL https://get.docker.com | sh\n"
+                "  sudo usermod -aG docker $USER\n"
+                "  newgrp docker\n\n"
+                "See https://docs.docker.com/engine/install/ for your distribution."
+            )
+
+    elif plat == "windows":
+        return (
+            "Docker is not installed.\n"
+            "Download Docker Desktop from: https://docker.com/products/docker-desktop\n\n"
+            "Or install with winget:\n"
+            "  winget install Docker.DockerDesktop"
+        )
+
+    return (
+        "Docker is not installed.\n"
+        "Visit https://docs.docker.com/get-docker/ for installation instructions."
+    )
+
+
+def is_docker_running() -> bool:
+    """Check if Docker daemon is running."""
+    docker_cmd = shutil.which("docker")
+    if not docker_cmd:
+        return False
+    try:
+        result = subprocess.run(
+            [docker_cmd, "info"],
+            capture_output=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def is_docker_installed() -> bool:
+    """Check if Docker CLI is installed."""
+    return shutil.which("docker") is not None
+
+
 class DockerError(Exception):
     """Docker-specific error with actionable messages."""
 
@@ -42,8 +159,34 @@ class DockerError(Exception):
         )
 
     @classmethod
+    def docker_not_installed(cls) -> "DockerError":
+        """Create error when Docker itself is not installed."""
+        return cls(get_docker_install_instructions())
+
+    @classmethod
     def daemon_not_running(cls) -> "DockerError":
         """Create error for Docker daemon not running."""
+        plat = get_platform()
+        if plat == "macos":
+            return cls(
+                "Docker daemon is not running.\n"
+                "Open Docker Desktop from your Applications folder to start it.\n\n"
+                "Or start from command line:\n"
+                "  open -a Docker"
+            )
+        elif plat == "linux":
+            return cls(
+                "Docker daemon is not running.\n"
+                "Start it with:\n"
+                "  sudo systemctl start docker\n\n"
+                "To start automatically on boot:\n"
+                "  sudo systemctl enable docker"
+            )
+        elif plat == "windows":
+            return cls(
+                "Docker daemon is not running.\n"
+                "Open Docker Desktop from the Start menu to start it."
+            )
         return cls(
             "Docker daemon is not running. "
             "Start Docker Desktop or run 'sudo systemctl start docker'"
@@ -65,6 +208,34 @@ class DockerError(Exception):
             "Run 'docker pull {image}' or 'agency-quickdeploy init --provider docker'"
         )
 
+    @classmethod
+    def permission_denied(cls) -> "DockerError":
+        """Create error for Docker permission denied."""
+        plat = get_platform()
+        if plat == "macos":
+            # macOS with Docker Desktop shouldn't have permission issues
+            return cls(
+                "Permission denied connecting to Docker.\n"
+                "Make sure Docker Desktop is running.\n\n"
+                "Open Docker Desktop from Applications, or run:\n"
+                "  open -a Docker"
+            )
+        elif plat == "linux":
+            return cls(
+                "Permission denied connecting to Docker daemon.\n"
+                "Fix this by adding your user to the docker group:\n"
+                "  sudo usermod -aG docker $USER\n"
+                "  newgrp docker\n\n"
+                "Or log out and back in for the change to take effect."
+            )
+        return cls(
+            "Permission denied connecting to Docker daemon.\n"
+            "Fix this by adding your user to the docker group:\n"
+            "  sudo usermod -aG docker $USER\n"
+            "Then log out and back in (or run: newgrp docker)\n\n"
+            "Alternatively, run with sudo (not recommended for regular use)."
+        )
+
 
 class DockerProvider(BaseProvider):
     """Local Docker provider for 24/7 agents on user's machine.
@@ -84,14 +255,20 @@ class DockerProvider(BaseProvider):
         Args:
             config: QuickDeploy configuration with Docker settings
         """
+        # Check for docker Python package first
         if not DOCKER_AVAILABLE:
             raise DockerError.not_installed()
+
+        # Check if Docker CLI is installed on the system
+        if not is_docker_installed():
+            raise DockerError.docker_not_installed()
 
         self.config = config
         self.data_dir = Path(config.docker_data_dir or "~/.agency").expanduser()
         self.agents_dir = self.data_dir / "agents"
         self.image = config.docker_image
         self._docker: Optional[docker.DockerClient] = None
+        self._platform = get_platform()
 
     @property
     def docker(self) -> "docker.DockerClient":
@@ -101,9 +278,18 @@ class DockerProvider(BaseProvider):
                 self._docker = docker.from_env()
                 # Test connection
                 self._docker.ping()
+            except PermissionError:
+                raise DockerError.permission_denied()
             except Exception as e:
-                if "Connection refused" in str(e) or "Cannot connect" in str(e):
-                    raise DockerError.daemon_not_running()
+                error_str = str(e)
+                if "Permission denied" in error_str or "PermissionError" in error_str:
+                    raise DockerError.permission_denied()
+                if "Connection refused" in error_str or "Cannot connect" in error_str:
+                    # Check if Docker is installed but not running
+                    if is_docker_installed():
+                        raise DockerError.daemon_not_running()
+                    else:
+                        raise DockerError.docker_not_installed()
                 raise
         return self._docker
 
@@ -156,6 +342,9 @@ class DockerProvider(BaseProvider):
                 "AGENT_PROMPT": prompt,
                 "MAX_ITERATIONS": str(kwargs.get("max_iterations", 0)),
                 "NO_SHUTDOWN": "true" if kwargs.get("no_shutdown") else "false",
+                # Set HOME to workspace since we run as host UID
+                # which may not have a home directory in the container
+                "HOME": "/workspace",
             }
 
             # Add repo/branch if provided
@@ -183,24 +372,39 @@ class DockerProvider(BaseProvider):
             except NotFound:
                 pass
 
-            # Run the container
-            # Mount agents_dir to /workspace so agent-runner creates /workspace/{agent_id}/project
-            # This maps to ~/.agency/agents/{agent_id}/project on the host
-            container = self.docker.containers.run(
-                self.image,
-                name=agent_id,
-                detach=True,
-                environment=env,
-                volumes={
+            # Build container run parameters
+            run_params = {
+                "image": self.image,
+                "name": agent_id,
+                "detach": True,
+                "environment": env,
+                "volumes": {
                     str(self.agents_dir): {"bind": "/workspace", "mode": "rw"},
                 },
-                labels={
+                "labels": {
                     "agency.agent": "true",
                     "agency.agent-id": agent_id,
                     "agency.provider": "docker",
                 },
-                restart_policy={"Name": "unless-stopped"},
-            )
+                "restart_policy": {"Name": "unless-stopped"},
+            }
+
+            # Set user for container - needed for Claude CLI (refuses to run as root)
+            # On Linux: run as host user to match volume permissions
+            # On macOS: Docker Desktop handles file permissions automatically via file sharing,
+            #           but we still need non-root user for Claude CLI
+            # On Windows: Docker Desktop with WSL2 handles permissions, use default user
+            if self._platform in ("linux", "macos"):
+                user_id = os.getuid()
+                group_id = os.getgid()
+                run_params["user"] = f"{user_id}:{group_id}"
+            # Windows with Docker Desktop uses WSL2 which handles permissions differently
+            # We don't set user, letting the container use its default non-root user
+
+            # Run the container
+            # Mount agents_dir to /workspace so agent-runner creates /workspace/{agent_id}/project
+            # This maps to ~/.agency/agents/{agent_id}/project on the host
+            container = self.docker.containers.run(**run_params)
 
             return DeploymentResult(
                 agent_id=agent_id,

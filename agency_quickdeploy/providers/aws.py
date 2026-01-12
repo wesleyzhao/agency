@@ -10,6 +10,7 @@ AWS credentials are loaded from the standard AWS credential chain:
 """
 
 import os
+from pathlib import Path
 from typing import Optional, Any
 
 try:
@@ -266,6 +267,67 @@ class AWSProvider(BaseProvider):
 
         return self.bucket
 
+    def _get_keys_dir(self) -> Path:
+        """Get the directory for storing SSH keys.
+
+        Returns:
+            Path to keys directory (~/.agency/keys/)
+        """
+        keys_dir = Path.home() / ".agency" / "keys"
+        keys_dir.mkdir(parents=True, exist_ok=True)
+        return keys_dir
+
+    def _create_key_pair(self, agent_id: str) -> str:
+        """Create an EC2 key pair and save the private key locally.
+
+        Args:
+            agent_id: Agent identifier (used for key name)
+
+        Returns:
+            Key pair name
+        """
+        ec2_client = boto3.client('ec2', region_name=self.region)
+        key_name = f"agency-{agent_id}"
+
+        # Delete existing key pair if it exists (from a previous failed launch)
+        try:
+            ec2_client.delete_key_pair(KeyName=key_name)
+        except Exception:
+            pass
+
+        # Create new key pair
+        response = ec2_client.create_key_pair(KeyName=key_name)
+        private_key = response['KeyMaterial']
+
+        # Save private key to ~/.agency/keys/{agent_id}.pem
+        key_path = self._get_keys_dir() / f"{agent_id}.pem"
+        key_path.write_text(private_key)
+        key_path.chmod(0o600)  # Secure permissions
+
+        return key_name
+
+    def _delete_key_pair(self, agent_id: str) -> None:
+        """Delete an EC2 key pair and local private key.
+
+        Args:
+            agent_id: Agent identifier
+        """
+        ec2_client = boto3.client('ec2', region_name=self.region)
+        key_name = f"agency-{agent_id}"
+
+        # Delete from AWS
+        try:
+            ec2_client.delete_key_pair(KeyName=key_name)
+        except Exception:
+            pass
+
+        # Delete local key file
+        key_path = self._get_keys_dir() / f"{agent_id}.pem"
+        try:
+            key_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
     def _generate_startup_script(
         self,
         agent_id: str,
@@ -306,8 +368,8 @@ class AWSProvider(BaseProvider):
 
         max_iterations = kwargs.get("max_iterations", 0)
         no_shutdown = "true" if kwargs.get("no_shutdown") else "false"
-        repo_url = kwargs.get("repo", "")
-        repo_branch = kwargs.get("branch", "main")
+        repo_url = kwargs.get("repo") or ""
+        repo_branch = kwargs.get("branch") or "main"
 
         # Escape prompt for embedding in script
         import shlex
@@ -673,6 +735,9 @@ fi
             # Get or create security group
             security_group_id = self._get_or_create_security_group(vpc_id)
 
+            # Create SSH key pair for this agent
+            key_name = self._create_key_pair(agent_id)
+
             # Build instance parameters
             instance_params = {
                 "ImageId": ami_id,
@@ -680,6 +745,7 @@ fi
                 "MinCount": 1,
                 "MaxCount": 1,
                 "UserData": startup_script,
+                "KeyName": key_name,
                 "TagSpecifications": [{
                     'ResourceType': 'instance',
                     'Tags': [
@@ -836,6 +902,8 @@ fi
         instance = self._get_instance(agent_id)
         if instance:
             instance.terminate()
+            # Clean up SSH key pair
+            self._delete_key_pair(agent_id)
             return True
         return False
 
