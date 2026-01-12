@@ -64,6 +64,7 @@ class QuickDeployConfig:
         provider: Deployment provider (gcp, railway, aws, or docker)
         railway_token: Railway API token (required for railway provider)
         railway_project_id: Railway project ID (auto-created if not set)
+        railway_workspace_id: Railway workspace ID (auto-detected if not set)
         aws_region: AWS region (required for AWS provider)
         aws_bucket: S3 bucket for state/logs (auto-generated if not set)
         aws_instance_type: EC2 instance type (default: t3.medium)
@@ -81,6 +82,7 @@ class QuickDeployConfig:
     provider: ProviderType = ProviderType.GCP
     railway_token: Optional[str] = None
     railway_project_id: Optional[str] = None
+    railway_workspace_id: Optional[str] = None  # Auto-detected if not set
     # AWS-specific settings
     aws_region: str = "us-east-1"
     aws_bucket: Optional[str] = None
@@ -151,6 +153,7 @@ def load_config(
         GOOGLE_CLOUD_PROJECT: Fallback for project if QUICKDEPLOY_PROJECT not set
         RAILWAY_TOKEN: Railway API token (required for railway provider)
         RAILWAY_PROJECT_ID: Railway project ID (optional, auto-created if not set)
+        RAILWAY_WORKSPACE_ID: Railway workspace ID (optional, auto-detected if not set)
         AWS_REGION: AWS region (default: us-east-1)
         AWS_BUCKET or AGENCY_AWS_BUCKET: S3 bucket name
         AWS_INSTANCE_TYPE: EC2 instance type (default: t3.medium)
@@ -185,6 +188,7 @@ def load_config(
     # Get Railway-specific settings
     railway_token = os.environ.get("RAILWAY_TOKEN")
     railway_project_id = os.environ.get("RAILWAY_PROJECT_ID")
+    railway_workspace_id = os.environ.get("RAILWAY_WORKSPACE_ID")
 
     # Get AWS-specific settings
     aws_region = os.environ.get("AWS_REGION", "us-east-1")
@@ -223,6 +227,7 @@ def load_config(
         provider=provider,
         railway_token=railway_token,
         railway_project_id=railway_project_id,
+        railway_workspace_id=railway_workspace_id,
         aws_region=aws_region,
         aws_bucket=aws_bucket,
         aws_instance_type=aws_instance_type,

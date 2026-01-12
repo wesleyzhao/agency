@@ -175,6 +175,7 @@ class RailwayProvider(BaseProvider):
         self.config = config
         self.token = config.railway_token
         self.project_id = config.railway_project_id
+        self._workspace_id = config.railway_workspace_id  # Auto-detected if None
         self._environment_id: Optional[str] = None
         # Maps agent_id -> service_id for status/stop operations
         self._service_map: dict[str, str] = {}
@@ -209,6 +210,47 @@ class RailwayProvider(BaseProvider):
         response.raise_for_status()
         return response.json()
 
+    def _get_workspace_id(self) -> Optional[str]:
+        """Get the user's workspace ID from Railway.
+
+        Railway requires a workspaceId for project creation.
+        If configured via RAILWAY_WORKSPACE_ID, uses that value.
+        Otherwise, auto-detects by querying the user's workspaces.
+
+        Returns:
+            Workspace ID if available, None on error
+        """
+        # Use configured workspace ID if provided
+        if self._workspace_id:
+            return self._workspace_id
+
+        # Auto-detect workspace ID
+        try:
+            result = self._graphql(
+                """
+                query {
+                    me {
+                        workspaces {
+                            id
+                            name
+                        }
+                    }
+                }
+                """
+            )
+
+            # Get first workspace
+            workspaces = result.get("data", {}).get("me", {}).get("workspaces", [])
+            if workspaces:
+                self._workspace_id = workspaces[0]["id"]
+                return self._workspace_id
+
+            return None
+
+        except Exception:
+            # If we can't get workspace ID, return None and let API handle it
+            return None
+
     def _discover_project_id(self) -> Optional[str]:
         """Discover project ID by searching for 'agency-quickdeploy' project.
 
@@ -219,15 +261,20 @@ class RailwayProvider(BaseProvider):
             Project ID if found, None otherwise
         """
         try:
-            # Use 'projects' query instead of 'me' - works with all token types
+            # Query projects through workspaces - the root 'projects' query
+            # doesn't return workspace projects reliably
             result = self._graphql(
                 """
                 query {
-                    projects {
-                        edges {
-                            node {
-                                id
-                                name
+                    me {
+                        workspaces {
+                            projects {
+                                edges {
+                                    node {
+                                        id
+                                        name
+                                    }
+                                }
                             }
                         }
                     }
@@ -235,12 +282,14 @@ class RailwayProvider(BaseProvider):
                 """
             )
 
-            projects = result.get("data", {}).get("projects", {}).get("edges", [])
-            for edge in projects:
-                project = edge.get("node", {})
-                if project.get("name") == "agency-quickdeploy":
-                    self.project_id = project["id"]
-                    return project["id"]
+            workspaces = result.get("data", {}).get("me", {}).get("workspaces", [])
+            for workspace in workspaces:
+                projects = workspace.get("projects", {}).get("edges", [])
+                for edge in projects:
+                    project = edge.get("node", {})
+                    if project.get("name") == "agency-quickdeploy":
+                        self.project_id = project["id"]
+                        return project["id"]
 
             return None
         except Exception:
@@ -287,6 +336,13 @@ class RailwayProvider(BaseProvider):
             return self.project_id
 
         # No existing project found, create a new one
+        # First, get the user's workspace ID (required by Railway API)
+        workspace_id = self._get_workspace_id()
+
+        create_input = {"name": "agency-quickdeploy"}
+        if workspace_id:
+            create_input["workspaceId"] = workspace_id
+
         result = self._graphql(
             """
             mutation projectCreate($input: ProjectCreateInput!) {
@@ -304,7 +360,7 @@ class RailwayProvider(BaseProvider):
                 }
             }
             """,
-            {"input": {"name": "agency-quickdeploy"}}
+            {"input": create_input}
         )
 
         if result.get("errors"):
