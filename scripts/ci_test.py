@@ -466,11 +466,11 @@ def run_level1(provider: BaseCIProvider, config: CIConfig, vm_id: str) -> CIResu
                             vm_id=vm_id, error=f"pip install failed: {stderr}",
                             logs={"install": stdout + stderr})
 
-        # Run tests
+        # Run tests (excluding Docker/AWS provider tests which require those services)
         print("  Running pytest...")
         stdout, stderr, code = provider.run_command(
             vm_id,
-            "cd /root/agency && source venv/bin/activate && python -m pytest -v --tb=short 2>&1",
+            "cd /root/agency && source venv/bin/activate && python -m pytest -v --tb=short --ignore=agency_quickdeploy/tests/test_docker_provider.py --ignore=agency_quickdeploy/tests/test_aws_provider.py 2>&1",
             timeout=600
         )
 
@@ -649,7 +649,7 @@ agency-quickdeploy launch "Create a file called ci-test-output.txt containing th
         print("  Waiting for agent to complete (this may take several minutes)...")
 
         # Poll for completion status (longer timeout for full completion)
-        completion_timeout = 600  # 10 minutes for agent to complete
+        completion_timeout = 900  # 15 minutes for agent to complete
         poll_start = time.time()
         last_status = "unknown"
 
