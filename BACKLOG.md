@@ -167,11 +167,17 @@ Automated tests that:
 
 ## Documentation TODO
 
-- [ ] Add troubleshooting guide (common errors, SSH debugging)
-- [ ] Document OAuth token refresh flow
+- [x] Add troubleshooting guide - see README.md and CLAUDE.md
+- [x] Document OAuth token flow - see CLAUDE.md "Authentication Deep Dive"
 - [ ] Add architecture diagram
 - [ ] Record demo video
-- [ ] Write "Getting Started in 5 Minutes" guide
+- [x] Write "Getting Started in 5 Minutes" guide - see README.md "Choose Your Path"
+
+**Documentation Structure (2026-01-19):**
+- `README.md` - User-friendly getting started guide
+- `CLAUDE.md` - Comprehensive technical reference for developers & AI agents
+- `BACKLOG.md` - Known issues and roadmap (this file)
+- `docs/` - Detailed reference documentation (API, CLI, deployment, architecture)
 
 ---
 
@@ -188,42 +194,23 @@ Automated tests that:
 
 ## Notes for Contributors
 
-### Running Tests
+See [CLAUDE.md](CLAUDE.md) for comprehensive developer documentation including:
+- Project architecture and key files
+- Complete CLI reference
+- Environment variables
+- Testing instructions
+- Troubleshooting guide
+
+### Quick Test Commands
 ```bash
-python -m pytest agency_quickdeploy/ shared/ -v
+# Run all tests
+python -m pytest
+
+# Test a launch (Docker - no cloud costs)
+ANTHROPIC_API_KEY=sk-ant-... agency-quickdeploy launch "Build hello world" --provider docker --no-shutdown
+agency-quickdeploy status <agent-id> --provider docker
+agency-quickdeploy stop <agent-id> --provider docker
 ```
-
-### Testing a Launch
-```bash
-# Set up .env with your credentials
-echo 'QUICKDEPLOY_PROJECT=your-project' >> .env
-echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env  # or CLAUDE_CODE_OAUTH_TOKEN
-
-# Launch test agent
-python -m agency_quickdeploy launch "Build a hello world Python CLI" --no-shutdown --name test-agent
-
-# Monitor
-python -m agency_quickdeploy status test-agent
-python -m agency_quickdeploy logs test-agent
-
-# SSH in to inspect
-gcloud compute ssh test-agent --zone=us-central1-a --project=your-project
-
-# Clean up
-python -m agency_quickdeploy stop test-agent
-```
-
-### Key Files
-- `agency_quickdeploy/providers/base.py` - BaseProvider ABC and ProviderType enum
-- `agency_quickdeploy/providers/gcp.py` - GCP Compute Engine provider
-- `agency_quickdeploy/providers/aws.py` - AWS EC2 provider
-- `agency_quickdeploy/providers/docker.py` - Local Docker provider
-- `agency_quickdeploy/providers/railway.py` - Railway container provider
-- `agent-runner/main.py` - Agent runner for Docker/Railway containers
-- `shared/harness/startup_template.py` - VM startup script template (GCP)
-- `agency_quickdeploy/launcher.py` - Main orchestration logic
-- `agency_quickdeploy/auth.py` - API key and OAuth handling
-- `agency_quickdeploy/cli.py` - CLI commands
 
 ---
 

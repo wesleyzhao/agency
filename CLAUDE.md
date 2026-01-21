@@ -1,294 +1,466 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Comprehensive reference for developers and Claude Code agents working on this codebase.
 
-## Documentation Quick Reference
-
-**Current Work & Issues:** See [BACKLOG.md](BACKLOG.md) for known issues, bugs, and planned features.
-
-**Detailed Documentation:**
-- **API Reference:** [docs/api/API.md](docs/api/API.md) - REST API specification
-- **CLI Commands:** [docs/cli/COMMANDS.md](docs/cli/COMMANDS.md) - Complete CLI reference
-- **Deployment Guide:** [docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) - GCP setup & deployment
-- **Security:** [docs/deployment/SECURITY.md](docs/deployment/SECURITY.md) - Security model & best practices
-- **Architecture:** [docs/architecture/TECHNICAL_SPEC.md](docs/architecture/TECHNICAL_SPEC.md) - Technical architecture
-- **PRD:** [docs/architecture/PRD.md](docs/architecture/PRD.md) - Product requirements
-- **Architecture Review:** [docs/architecture/ARCHITECTURE_REVIEW.md](docs/architecture/ARCHITECTURE_REVIEW.md)
-
-**Historical Context:** [docs/archive/](docs/archive/) contains completed work logs and planning documents.
-
-## Build and Test Commands
+## Quick Start for AI Agents
 
 ```bash
-# Install with all dependencies
+# Install and test
 pip install -e ".[server,dev]"
+python -m pytest                    # Run all 164+ tests
 
-# Run all tests (164 tests)
-python -m pytest
-
-# Run a single test file
-python -m pytest tests/unit/test_config.py
-
-# Run a specific test
-python -m pytest tests/unit/test_config.py::test_config_defaults -v
-
-# Run tests with coverage
-python -m pytest --cov=agentctl tests/
+# Key files to understand
+agency_quickdeploy/cli.py          # Main CLI entry point
+agency_quickdeploy/launcher.py     # Core orchestration logic
+agency_quickdeploy/providers/      # Provider implementations (GCP, AWS, Docker, Railway)
+shared/harness/startup_template.py # VM startup script generator
+agent-runner/main.py               # Docker container entry point
 ```
+
+**Before making changes:**
+1. Read `BACKLOG.md` for known issues and current work
+2. Run tests after changes: `python -m pytest -v`
+3. Test both auth methods (api_key and oauth) if changing auth code
+
+---
+
+## Which Tool Should I Use?
+
+This repo has **two CLI tools**. Choose based on your needs:
+
+| Need | Use | Why |
+|------|-----|-----|
+| Quick experiments | `agency-quickdeploy` | Zero setup, one command |
+| Local development (free) | `agency-quickdeploy --provider docker` | No cloud costs |
+| CI/CD automation | `agency-quickdeploy` | Stateless, scriptable |
+| Multiple concurrent agents | `agentctl` | Master server manages state |
+| Team/production use | `agentctl` | Centralized control |
+| SSH into agents | Either (GCP provider) | Both support GCP VMs |
+
+**TL;DR:** Start with `agency-quickdeploy`. Use `agentctl` when you need a master server.
+
+---
 
 ## Project Architecture
 
-This repository contains two CLI tools for managing autonomous Claude Code agents on GCP, AWS, Railway, or Docker:
-
-### 1. `agentctl` - Full-featured agent management (requires master server)
-- **CLI** (`agentctl/cli/`): Click commands for run, list, status, stop, ssh, logs, screenshots, tell
-- **Server** (`agentctl/server/`): FastAPI server with SQLite persistence, manages VM lifecycle
-- **Providers** (`agentctl/providers/`): Abstract VM provider (GCP implementation)
-
-### 2. `agency-quickdeploy` - Standalone one-command launcher (no server needed)
-- **CLI** (`agency_quickdeploy/cli.py`): launch, status, logs, stop, list, init
-- **Launcher** (`agency_quickdeploy/launcher.py`): Orchestrates resources via providers
-- **Providers** (`agency_quickdeploy/providers/`): Abstract provider with GCP, AWS, Railway, and Docker implementations
-- **GCP modules** (`agency_quickdeploy/gcp/`): vm.py, storage.py, secrets.py
-
-### Agent Runner (`agent-runner/`)
-Reusable Docker image for containerized providers (Docker, Railway):
-- `main.py`: Entry point that runs the autonomous agent loop
-- `Dockerfile`: Builds the agent container image
-- Published to `ghcr.io/wesleyzhao/agency-agent:latest`
-
-### Shared Harness (`shared/harness/`)
-Reusable components for both tools:
-- `startup_template.py`: Generates VM startup scripts that embed a Python agent runner
-- `agent_loop.py`: Pure functions for feature list parsing, progress tracking, prompt generation
-
-## Key Design Patterns
-
-**Two-agent architecture**: Initializer agent creates feature_list.json, then coding agents implement features one-by-one across context windows. Based on Anthropic's [autonomous-coding pattern](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding).
-
-**GCS-based state**: Agent status, logs, and progress synced to `gs://<bucket>/agents/<agent-id>/` - no server required for agency-quickdeploy.
-
-**VM metadata for secrets**: API keys passed via GCP instance metadata, not environment variables in startup script.
-
-## Authentication
-
-`agency-quickdeploy` supports two authentication methods:
-
-### API Key (default)
-- Uses `ANTHROPIC_API_KEY` environment variable or Secret Manager
-- Billed per token usage
-- Secret name: `anthropic-api-key`
-
-### OAuth Token (subscription-based)
-- Uses Claude Code subscription instead of per-token billing
-- Generated via `claude setup-token` (requires browser)
-- Secret name: `claude-oauth-credentials`
-
-```bash
-# Generate OAuth token (on machine with browser)
-claude setup-token
-# Outputs: sk-ant-oat01-...
-
-# Store in Secret Manager (as JSON)
-echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-YOUR-TOKEN"}}' | \
-    gcloud secrets create claude-oauth-credentials --data-file=-
-
-# Launch with OAuth
-agency-quickdeploy launch "Build an app" --auth-type oauth
+```
+agency/
+├── agency_quickdeploy/        # Standalone launcher (NO server needed)
+│   ├── cli.py                 # Click CLI: launch, status, logs, stop, list, init
+│   ├── launcher.py            # QuickDeployLauncher - main orchestration
+│   ├── auth.py                # Credentials: API key & OAuth handling
+│   ├── config.py              # QuickDeployConfig dataclass
+│   └── providers/
+│       ├── base.py            # AbstractProvider interface
+│       ├── gcp.py             # GCP Compute Engine
+│       ├── aws.py             # AWS EC2
+│       ├── docker.py          # Local Docker containers
+│       └── railway.py         # Railway containers
+│
+├── agentctl/                  # Full-featured (REQUIRES master server)
+│   ├── cli/                   # Click commands: run, list, status, stop, ssh, logs, etc.
+│   ├── server/                # FastAPI server with SQLite
+│   │   ├── app.py             # Main FastAPI app
+│   │   ├── routes/            # API endpoints
+│   │   └── services/          # GCP services
+│   └── shared/                # Models, config, API client
+│
+├── agent-runner/              # Docker image for containerized providers
+│   ├── main.py                # Entry point for Docker/Railway agents
+│   └── Dockerfile             # Builds ghcr.io/wesleyzhao/agency-agent:latest
+│
+├── shared/harness/            # Shared agent runtime
+│   ├── startup_template.py    # Generates VM startup scripts
+│   └── agent_loop.py          # Feature list parsing, prompt generation
+│
+└── scripts/                   # Development & CI scripts
+    ├── ci_test.py             # Integration testing
+    └── test_gcp_deploy.py     # Manual deployment testing
 ```
 
-## Environment Variables
+### Key Design Patterns
 
-Common:
-- `QUICKDEPLOY_PROVIDER`: Deployment provider (`gcp`, `aws`, `docker`, `railway`)
-- `QUICKDEPLOY_AUTH_TYPE`: Authentication type (`api_key` or `oauth`)
-- `ANTHROPIC_API_KEY`: API key (for api_key auth)
-- `CLAUDE_CODE_OAUTH_TOKEN`: OAuth token (for oauth auth)
+1. **Two-Agent Architecture**: Initializer agent creates `feature_list.json`, then coding agents implement features one-by-one. Based on Anthropic's [autonomous-coding pattern](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding).
 
-GCP provider:
-- `QUICKDEPLOY_PROJECT` or `GOOGLE_CLOUD_PROJECT`: GCP project ID (required)
-- `QUICKDEPLOY_ZONE`: GCP zone (default: us-central1-a)
-- `QUICKDEPLOY_BUCKET`: GCS bucket (auto-generated if not set)
+2. **Cloud Storage State**: Agent status, logs, and progress sync to cloud storage (`gs://` for GCP, `s3://` for AWS, `~/.agency/` for Docker). No server needed for agency-quickdeploy.
 
-AWS provider:
-- `AWS_REGION` or `QUICKDEPLOY_AWS_REGION`: AWS region (default: us-east-1)
-- `AWS_BUCKET` or `QUICKDEPLOY_AWS_BUCKET`: S3 bucket for state storage
-- `AWS_INSTANCE_TYPE`: EC2 instance type (default: t3.medium)
+3. **Secure Credential Passing**:
+   - **GCP**: Secrets via VM instance metadata (not env vars in startup script)
+   - **AWS/Docker/Railway**: Secrets via environment variables
 
-Docker provider (local):
-- `AGENCY_DATA_DIR`: Local data directory (default: ~/.agency)
-- `AGENCY_DOCKER_IMAGE`: Custom agent image (default: ghcr.io/wesleyzhao/agency-agent:latest)
+---
 
-Railway provider:
-- `RAILWAY_TOKEN`: Railway API token (required, UUID format)
-- `RAILWAY_PROJECT_ID`: Railway project ID (optional, auto-created if not set)
-- `RAILWAY_AGENT_IMAGE`: Custom agent image (default: ghcr.io/wesleyzhao/agency-agent:latest)
+## Complete CLI Reference
 
-For `agentctl`:
-- `AGENTCTL_MASTER_URL`: Master server URL
-- `AGENTCTL_GCP_PROJECT`, `AGENTCTL_GCP_REGION`, `AGENTCTL_GCP_ZONE`
+### agency-quickdeploy Commands
 
-## Usage Examples
-
-### GCP Provider (default)
-
+#### `launch` - Start a new agent
 ```bash
-# Launch agent with API key (default)
-QUICKDEPLOY_PROJECT=my-project agency-quickdeploy launch "Build a todo app"
+agency-quickdeploy launch "PROMPT" [OPTIONS]
 
-# Launch agent with OAuth (subscription billing)
-QUICKDEPLOY_PROJECT=my-project agency-quickdeploy launch "Build a todo app" --auth-type oauth
-
-# Keep VM running after completion (for debugging)
-agency-quickdeploy launch "Build an API" --no-shutdown
-
-# Monitor agent
-agency-quickdeploy status agent-20260102-abc123
-agency-quickdeploy logs agent-20260102-abc123
-
-# SSH into running agent VM
-gcloud compute ssh AGENT_ID --zone=us-central1-a --project=my-project
-
-# Stop an agent
-agency-quickdeploy stop agent-20260102-abc123
-
-# List all running agents
-agency-quickdeploy list
+Options:
+  -n, --name TEXT               Custom agent name (auto-generated if omitted)
+  -r, --repo TEXT               Git repository URL to clone
+  -b, --branch TEXT             Git branch to use
+  -p, --provider [gcp|aws|docker|railway]  Deployment provider (default: gcp)
+  -a, --auth-type [api_key|oauth]          Authentication method (default: api_key)
+  -m, --max-iterations INT      Max iterations, 0=unlimited (default: 0)
+  --spot                        Use spot/preemptible instance (GCP/AWS only)
+  --shutdown / --no-shutdown    Auto-shutdown on completion (default: --no-shutdown, keeps running)
 ```
 
-### Docker Provider (Local - Free!)
-
+#### `status` - Get agent status
 ```bash
-# Launch agent locally in Docker container
-ANTHROPIC_API_KEY=sk-ant... agency-quickdeploy launch "Build a todo app" --provider docker
-
-# Initialize (pull the agent image)
-agency-quickdeploy init --provider docker
-
-# Monitor agent
-agency-quickdeploy status agent-123 --provider docker
-agency-quickdeploy logs agent-123 --provider docker
-
-# Access container shell
-docker exec -it agent-123 bash
-
-# Stop an agent
-agency-quickdeploy stop agent-123 --provider docker
-
-# List local agents
-agency-quickdeploy list --provider docker
+agency-quickdeploy status AGENT_ID [-p PROVIDER]
 ```
+
+#### `logs` - View agent logs
+```bash
+agency-quickdeploy logs AGENT_ID [-p PROVIDER] [-f/--follow]
+```
+
+#### `stop` - Stop and delete agent
+```bash
+agency-quickdeploy stop AGENT_ID [-p PROVIDER]
+```
+
+#### `list` - List all agents
+```bash
+agency-quickdeploy list [-p PROVIDER]
+```
+
+#### `init` - Verify configuration
+```bash
+agency-quickdeploy init [-p PROVIDER]
+```
+
+### agentctl Commands (requires master server)
+
+**Start the master server first:**
+```bash
+# Production mode
+uvicorn agentctl.server.app:app --host 0.0.0.0 --port 8000
+
+# Development mode (auto-reload on code changes)
+uvicorn agentctl.server.app:app --reload --port 8000
+
+# Set the server URL for CLI
+export AGENTCTL_MASTER_URL=http://localhost:8000
+```
+
+**Then use the CLI:**
+```bash
+# Core commands
+agentctl run "PROMPT" [OPTIONS]     # Start agent
+agentctl list [-s STATUS] [-o FORMAT]
+agentctl status AGENT_ID
+agentctl stop AGENT_ID [-f]
+agentctl delete AGENT_ID [-f]
+
+# Monitoring
+agentctl logs AGENT_ID [-f] [-n LINES]
+agentctl ssh AGENT_ID [-c COMMAND]
+agentctl screenshots AGENT_ID [-d] [-o DIR] [-n LIMIT]
+
+# Communication
+agentctl tell AGENT_ID "INSTRUCTION"
+
+# Setup
+agentctl init [OPTIONS]
+```
+
+---
+
+## Environment Variables (Single Source of Truth)
+
+### Common (All Providers)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QUICKDEPLOY_PROVIDER` | `gcp` | Provider: `gcp`, `aws`, `docker`, `railway` |
+| `QUICKDEPLOY_AUTH_TYPE` | `api_key` | Auth: `api_key` or `oauth` |
+| `ANTHROPIC_API_KEY` | - | **Required** for api_key auth |
+| `CLAUDE_CODE_OAUTH_TOKEN` | - | **Required** for oauth auth (token only) |
+
+### GCP Provider
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QUICKDEPLOY_PROJECT` | - | **Required**: GCP project ID |
+| `GOOGLE_CLOUD_PROJECT` | - | Fallback for project ID |
+| `QUICKDEPLOY_ZONE` | `us-central1-a` | GCP zone |
+| `QUICKDEPLOY_BUCKET` | auto | GCS bucket (auto-created if not set) |
+| `QUICKDEPLOY_MACHINE_TYPE` | `e2-medium` | GCE machine type |
 
 ### AWS Provider
 
-```bash
-# Launch agent on AWS EC2
-AWS_REGION=us-east-1 ANTHROPIC_API_KEY=sk-ant... \
-  agency-quickdeploy launch "Build a todo app" --provider aws
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AWS_REGION` | `us-east-1` | AWS region |
+| `AWS_BUCKET` | auto | S3 bucket (auto-created) |
+| `AWS_INSTANCE_TYPE` | `t3.medium` | EC2 instance type |
+| Standard AWS credentials (`AWS_ACCESS_KEY_ID`, etc.) | | |
 
-# Use spot instances for cost savings
-agency-quickdeploy launch "Build an API" --provider aws --spot
+**Supported regions**: us-east-1, us-east-2, us-west-1, us-west-2, eu-west-1, eu-west-2, eu-central-1, ap-northeast-1, ap-southeast-1, ap-southeast-2
 
-# Monitor agent
-agency-quickdeploy status agent-123 --provider aws
-agency-quickdeploy logs agent-123 --provider aws
+### Docker Provider (Local)
 
-# Stop an agent
-agency-quickdeploy stop agent-123 --provider aws
-
-# List all AWS agents
-agency-quickdeploy list --provider aws
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENCY_DATA_DIR` | `~/.agency` | Local data directory |
+| `AGENCY_DOCKER_IMAGE` | `ghcr.io/wesleyzhao/agency-agent:latest` | Agent image |
 
 ### Railway Provider
 
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RAILWAY_TOKEN` | - | **Required**: Railway API token (UUID format from railway.com/account/tokens) |
+| `RAILWAY_PROJECT_ID` | auto | Railway project (auto-created if not set) |
+| `RAILWAY_WORKSPACE_ID` | auto | Workspace (auto-detected from token) |
+| `RAILWAY_AGENT_IMAGE` | `ghcr.io/wesleyzhao/agency-agent:latest` | Custom agent Docker image |
+| `RAILWAY_AGENT_REPO` | - | Optional: GitHub repo URL for deployment (uses Docker image if not set) |
+
+### agentctl-specific
+
+| Variable | Description |
+|----------|-------------|
+| `AGENTCTL_MASTER_URL` | Master server URL |
+| `AGENTCTL_GCP_PROJECT` | Override GCP project |
+| `AGENTCTL_GCP_REGION` | Override GCP region |
+| `AGENTCTL_GCP_ZONE` | Override GCP zone |
+
+---
+
+## Authentication Deep Dive
+
+### API Key (Default - Pay Per Token)
+
 ```bash
-# Launch agent on Railway
-RAILWAY_TOKEN=your-token ANTHROPIC_API_KEY=sk-ant... \
-  agency-quickdeploy launch "Build a todo app" --provider railway
+# Set your API key
+export ANTHROPIC_API_KEY=sk-ant-api03-...
 
-# Monitor agent
-agency-quickdeploy status agent-123 --provider railway
-agency-quickdeploy logs agent-123 --provider railway
-
-# Stop an agent
-agency-quickdeploy stop agent-123 --provider railway
-
-# List all agents on Railway
-agency-quickdeploy list --provider railway
+# Launch (api_key is default)
+agency-quickdeploy launch "Build an app"
 ```
 
-## Known Issues
+**Token prefix**: `sk-ant-api`
+**Billing**: Per-token usage
 
-### First-File Creation Bug
-The `claude-agent-sdk` with `permission_mode='bypassPermissions'` has trouble creating the FIRST file in a session. Subsequent files work fine.
+### OAuth Token (Subscription Billing)
 
-**Workaround**: Startup script seeds an empty `feature_list.json` so the agent populates it rather than creating from scratch. See `BACKLOG.md` for details.
+Use your Claude Code subscription instead of per-token billing.
+
+#### Step 1: Generate OAuth Token
+
+```bash
+# On a machine with a browser
+claude setup-token
+# Browser opens, you authenticate
+# Returns: sk-ant-oat01-...
+```
+
+This is the Claude Code CLI command that generates an OAuth token from your subscription.
+
+#### Step 2: Use the Token
+
+**Option A: Environment Variable (Simplest)**
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-YOUR-TOKEN
+agency-quickdeploy launch "Build an app" --auth-type oauth --provider docker
+```
+
+**Option B: GCP Secret Manager (For GCP provider)**
+```bash
+# Store as JSON (required format)
+echo '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-YOUR-TOKEN"}}' | \
+    gcloud secrets create claude-oauth-credentials --data-file=-
+
+# Grant VM access to the secret
+gcloud secrets add-iam-policy-binding claude-oauth-credentials \
+    --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+
+# Launch
+agency-quickdeploy launch "Build an app" --auth-type oauth
+```
+
+**Token prefix**: `sk-ant-oat`
+**Billing**: Uses your Claude Code subscription
+
+#### OAuth JSON Format
+
+When storing in Secret Manager, use this structure:
+```json
+{
+  "claudeAiOauth": {
+    "accessToken": "sk-ant-oat01-...",
+    "refreshToken": "sk-ant-ort01-...",   // Optional
+    "expiresAt": 1748658860401,            // Optional: Unix timestamp
+    "scopes": ["user:inference", "user:profile"]  // Optional
+  }
+}
+```
+
+---
+
+## Provider Comparison
+
+| Feature | Docker | Railway | GCP | AWS |
+|---------|--------|---------|-----|-----|
+| **Cost** | Free (local) | Per-usage | Per-minute VM | Per-minute VM |
+| **Startup time** | ~5 sec | ~30 sec | ~2-3 min | ~2-3 min |
+| **SSH access** | `docker exec` | No | Yes | Via SSH key |
+| **Spot instances** | N/A | No | Yes | Yes |
+| **Persistent storage** | Local | Railway Volumes | GCS | S3 |
+| **Max runtime** | Unlimited | Platform limits | Unlimited | Unlimited |
+| **Best for** | Development | Quick deploys | Production | AWS shops |
+
+### Provider-Specific Notes
+
+**Docker**: No cloud costs. Agent data stored in `~/.agency/agents/{id}/`. Access container with `docker exec -it AGENT_ID bash`.
+
+**Railway**: Requires `RAILWAY_TOKEN` from railway.com/account/tokens. Auto-creates projects. Fast startup but no SSH.
+
+**GCP**: Full VM with SSH. Use `--spot` for 60-91% cost savings. Logs sync to GCS every 60 seconds.
+
+**AWS**: EC2 instances. SSH keys auto-generated and stored locally. Use `--spot` for cost savings. **Note**: AWS provider has less testing than GCP.
+
+---
+
+## Testing
+
+### Unit Tests
+```bash
+# All tests
+python -m pytest
+
+# Specific test file
+python -m pytest tests/unit/test_config.py
+
+# With coverage
+python -m pytest --cov=agentctl --cov=agency_quickdeploy tests/
+```
+
+### Integration Tests (CI)
+
+Run these for significant changes to deployment code:
+
+```bash
+# Level 1: Build/test on fresh VM (~45s)
+python scripts/ci_test.py --level 1
+
+# Level 2: Agent launch verification (~70s)
+python scripts/ci_test.py --level 2
+
+# Level 3: Full task completion (~5-10 min)
+python scripts/ci_test.py --level 3
+
+# Use local uncommitted code
+python scripts/ci_test.py --level 1 --source local
+
+# Keep VM for debugging
+python scripts/ci_test.py --level 2 --no-cleanup
+```
+
+---
 
 ## Troubleshooting
 
 ### Agent stuck on "First session - initializing project..."
-This means `feature_list.json` wasn't created. Check:
-1. VM is running: `agency-quickdeploy status <agent-id>`
-2. SSH in and check logs: `tail -f /var/log/agent.log`
-3. Manually create feature_list.json if needed (see BACKLOG.md)
 
-### Can't SSH into VM
+The `feature_list.json` wasn't created (known first-file bug).
+
 ```bash
-# Check if VM is running
-gcloud compute instances list --filter="name~<agent-id>"
+# Check agent status
+agency-quickdeploy status AGENT_ID
 
-# Try with troubleshoot flag
-gcloud compute ssh <agent-id> --zone=us-central1-a --troubleshoot
+# SSH in (GCP)
+gcloud compute ssh AGENT_ID --zone=us-central1-a
+
+# Check logs
+tail -f /var/log/agent.log
+
+# Manually seed feature_list.json if needed
+echo '[]' > /workspace/feature_list.json
+```
+
+### Can't SSH into VM (GCP)
+
+```bash
+# Check VM exists
+gcloud compute instances list --filter="name~AGENT_ID"
+
+# Try with troubleshooting
+gcloud compute ssh AGENT_ID --zone=us-central1-a --troubleshoot
 ```
 
 ### No logs appearing
-Logs sync to GCS every 60 seconds. For immediate logs:
-```bash
-gcloud compute ssh <agent-id> --zone=us-central1-a --command="tail -50 /var/log/agent.log"
-```
 
-## For Other Claude Code Agents
-
-When working on this codebase:
-1. Run tests after changes: `python -m pytest agency_quickdeploy/ shared/ -v`
-2. Check `BACKLOG.md` for known issues and planned work
-3. The startup script embeds a Python agent runner - changes there affect all VMs
-4. OAuth and API key paths are separate - test both if changing auth
-
-### CI Integration Testing (Important for Major Changes)
-
-**When to run CI tests:**
-- After making changes to `agency_quickdeploy/`, `shared/harness/`, or startup scripts
-- Before merging significant PRs
-- When changing GCP infrastructure, VM setup, or deployment logic
-
-**CI Test Levels:**
-```bash
-# Level 1: Build/test on fresh VM (~45s) - run for any code changes
-python scripts/ci_test.py --level 1
-
-# Level 2: Deployment startup verification (~70s) - run for deployment changes
-python scripts/ci_test.py --level 2
-
-# Test with local uncommitted code
-python scripts/ci_test.py --level 1 --source local
-
-# Keep VM for debugging failures
-python scripts/ci_test.py --level 2 --no-cleanup
-```
-
-**What CI tests verify:**
-- Level 1: Fresh Ubuntu VM can clone repo, install deps, pass pytest
-- Level 2: Level 1 + agent VM launches successfully and reaches "running" state
-- Level 3: Level 1 + agent completes full task (runs to completion, ~5-10 min)
-
-See `scripts/README.md` for full documentation.
+Logs sync every 60 seconds. For immediate logs:
 
 ```bash
-# Agentctl: Requires running master server
-uvicorn agentctl.server.app:app --port 8000
-agentctl run "Build a REST API"
-agentctl list
-agentctl ssh my-agent
+# GCP
+gcloud compute ssh AGENT_ID --zone=us-central1-a --command="tail -50 /var/log/agent.log"
+
+# Docker
+docker logs AGENT_ID
 ```
+
+### OAuth token not working
+
+1. Verify token prefix is `sk-ant-oat` (not `sk-ant-api`)
+2. Check `--auth-type oauth` flag is set
+3. For GCP, verify Secret Manager permissions
+
+---
+
+## Known Issues
+
+See `BACKLOG.md` for full list. Key issues:
+
+1. **First-File Creation Bug**: The `claude-agent-sdk` with `bypassPermissions` struggles to create the FIRST file. Workaround: startup script seeds empty `feature_list.json`.
+
+2. **AWS Provider Less Tested**: Works but has less production testing than GCP.
+
+3. **Railway Volume Persistence**: Check Railway's current volume policies.
+
+---
+
+## Documentation Index
+
+| Document | Purpose |
+|----------|---------|
+| `README.md` | User-friendly getting started guide |
+| `CLAUDE.md` | This file - developer/agent reference |
+| `BACKLOG.md` | Known issues and planned work |
+| `CONTRIBUTING.md` | Contribution guidelines |
+| `docs/api/API.md` | REST API specification |
+| `docs/cli/COMMANDS.md` | Detailed CLI reference |
+| `docs/deployment/DEPLOYMENT.md` | GCP setup guide |
+| `docs/deployment/SECURITY.md` | Security model |
+| `docs/architecture/` | Architecture docs |
+| `docs/archive/` | Historical planning docs |
+
+---
+
+## For Claude Code Agents Working on This Codebase
+
+1. **Always run tests** after making changes
+2. **Check BACKLOG.md** before starting work
+3. **Test both auth methods** if changing auth code
+4. **The startup script** (`shared/harness/startup_template.py`) generates code that runs on VMs - changes affect all deployed agents
+5. **Provider implementations** are in `agency_quickdeploy/providers/` - each has its own quirks
+6. **OAuth and API key paths are separate** - modifications to one may not affect the other
+
+### Key Files for Common Tasks
+
+| Task | Files |
+|------|-------|
+| Add CLI option | `agency_quickdeploy/cli.py` |
+| Change launch behavior | `agency_quickdeploy/launcher.py` |
+| Add/modify provider | `agency_quickdeploy/providers/{provider}.py` |
+| Change VM startup | `shared/harness/startup_template.py` |
+| Change Docker agent | `agent-runner/main.py`, `agent-runner/Dockerfile` |
+| Change auth handling | `agency_quickdeploy/auth.py` |
+| Add agentctl command | `agentctl/cli/` |
+| Change server API | `agentctl/server/routes/` |
